@@ -85,7 +85,7 @@ pub(super) fn extract_cds(mut cd_bytes: Bytes) -> Option<Vec<CentralDirectoryHea
     Some(cds)
 }
 
-pub(super) fn gen_classsic(profile: Profile) -> State {
+pub(super) fn gen_classic(profile: Profile) -> State {
     let request_builder = GITHUB_CLIENT.get(profile.download_url());
     let storage = Storage::FileInfo(profile.download_path());
 

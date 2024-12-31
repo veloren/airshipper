@@ -19,7 +19,7 @@ use futures_util::{
 };
 use iced::futures;
 use local_directory::{FileInformation, LocalDirectory};
-use remote_zip::{RemoteZipError, gen_classsic};
+use remote_zip::{RemoteZipError, gen_classic};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 use tokio::io::AsyncWriteExt;
@@ -99,7 +99,7 @@ pub(crate) fn update(
 impl State {
     pub(crate) async fn progress(self) -> Option<(Progress, Self)> {
         let res = match self {
-            State::ToBeEvaluated(params, f) => evalute_remote_version(params, f).await,
+            State::ToBeEvaluated(params, f) => evaluate_remote_version(params, f).await,
             State::DownloadEndOfCentralDirectory(p, m) => {
                 evaluate_remote_eocd(p, m).await
             },
@@ -124,14 +124,14 @@ impl State {
 }
 
 // asks airshipper server for version and compares with profile
-async fn evalute_remote_version(
+async fn evaluate_remote_version(
     mut profile: Profile,
     force_complete_redownload: bool,
 ) -> Result<Option<(Progress, State)>, ClientError> {
-    tracing::debug!("evalute_remote_version");
+    tracing::debug!("evaluate_remote_version");
     if force_complete_redownload {
         tracing::info!("force redownload, no matter what");
-        return Ok(Some((Progress::ReadyToDownload, gen_classsic(profile))));
+        return Ok(Some((Progress::ReadyToDownload, gen_classic(profile))));
     }
 
     let remote = WEB_CLIENT
@@ -142,14 +142,14 @@ async fn evalute_remote_version(
         .await?;
 
     let remote_matches_profile =
-        Some(remote.clone()) != profile.version || !&profile.installed();
+        Some(remote.clone()) == profile.version && profile.installed();
 
     profile.version = Some(remote);
 
     if !remote_matches_profile && profile.disable_partial_download {
         Ok(Some((
             Progress::ReadyToDownload,
-            gen_classsic(profile.clone()),
+            gen_classic(profile.clone()),
         )))
     } else {
         Ok(Some((
@@ -174,7 +174,7 @@ fn fallback(
         // if profiles dont match, we enforce classic download
         Ok(Some((
             Progress::ReadyToDownload,
-            gen_classsic(profile.clone()),
+            gen_classic(profile.clone()),
         )))
     }
 }
@@ -184,7 +184,7 @@ async fn evaluate_remote_eocd(
     profile: Profile,
     remote_matches_profile: bool,
 ) -> Result<Option<(Progress, State)>, ClientError> {
-    tracing::debug!("evalute_remote_cd");
+    tracing::debug!("evaluate_remote_eocd");
     let zip_url = profile.download_url();
     let content_length_resp = GITHUB_CLIENT.head(&zip_url).send().await?;
 
@@ -318,11 +318,11 @@ async fn unzip_classic(
         std::fs::remove_dir_all(assets)?;
     }
 
-    for i in 1..archive.len() {
+    for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        // TODO: Verify that `sanitized_name()` works correctly in this case.
-        #[allow(deprecated)]
-        let path = profile.directory().join(file.sanitized_name());
+        let path = profile
+            .directory()
+            .join(file.enclosed_name().ok_or(ClientError::ArchiveError)?);
 
         if file.is_dir() {
             std::fs::create_dir_all(path)?;
@@ -373,7 +373,7 @@ async fn filter_missings(
     const MAX_FILES_FOR_PARTIAL_DOWNLOAD: usize = 200;
     if compared.needs_redownload.len() > MAX_FILES_FOR_PARTIAL_DOWNLOAD {
         tracing::info!(
-            "to many files changed to make partial download efficient, falling back to \
+            "too many files changed to make partial download efficient, falling back to \
              classic mode"
         );
         return fallback(&profile, false);
@@ -524,8 +524,8 @@ async fn unzip_partial(
             if !path.starts_with(profile.directory()) {
                 panic!(
                     "{}",
-                    "Zip Escape Attack, it seems your zip is compromized and tries to \
-                     write outside rood, call the veloren team, path tried to write to: \
+                    "Zip Escape Attack, it seems your zip is compromised and tries to \
+                     write outside root, call the veloren team, path tried to write to: \
                      {path:?}",
                 );
             }
@@ -535,19 +535,21 @@ async fn unzip_partial(
 
             let file = tokio::spawn(tokio::fs::File::create(path));
 
-            let mut file_data = match CompressionMethod::try_from(remote.fixed.compression_method) {
-                Ok(CompressionMethod::Deflated) => {
-                    let compressed = rbytes.take(remote_file_size);
-                    let mut deflate_reader = DeflateDecoder::new(compressed.reader());
-                    let mut decompressed = Vec::with_capacity(remote_file_size);
-                    deflate_reader.read_to_end(&mut decompressed).unwrap();
-                    bytes::Bytes::copy_from_slice(&decompressed)
-                },
-                Ok(CompressionMethod::Stored) => rbytes
-                    .take(remote_file_size)
-                    .copy_to_bytes(remote_file_size),
-                _ => return fallback(&profile, false), /* should not happen at this                                         * point */
-            };
+            let mut file_data =
+                match CompressionMethod::try_from(remote.fixed.compression_method) {
+                    Ok(CompressionMethod::Deflated) => {
+                        let compressed = rbytes.take(remote_file_size);
+                        let mut deflate_reader = DeflateDecoder::new(compressed.reader());
+                        let mut decompressed = Vec::with_capacity(remote_file_size);
+                        deflate_reader.read_to_end(&mut decompressed).unwrap();
+                        bytes::Bytes::copy_from_slice(&decompressed)
+                    },
+                    Ok(CompressionMethod::Stored) => rbytes
+                        .take(remote_file_size)
+                        .copy_to_bytes(remote_file_size),
+                    // should not happen at this point
+                    _ => return fallback(&profile, false),
+                };
 
             let mut file = file.await.unwrap()?;
             // TODO: evaluate splitting this up

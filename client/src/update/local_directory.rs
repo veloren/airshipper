@@ -3,9 +3,11 @@ use std::{
     path::{PathBuf, StripPrefixError},
 };
 use thiserror::Error;
-use tokio::fs::ReadDir;
 
-use super::download::{ProgressData, StepProgress, UpdateContent};
+use crate::ClientError;
+
+/// Paths which should be ignored by the compare mechanism
+const IGNORE_PATHS: &[&str] = &["userdata/", "screenshots/", "maps/"];
 
 #[derive(Error, Debug)]
 pub(super) enum LocalDirectoryError {
@@ -18,86 +20,80 @@ pub(super) enum LocalDirectoryError {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct FileInformation {
+pub(super) struct LocalFileInfo {
     pub path: PathBuf,
     // with stripped prefix with / as file ending
     pub local_unix_path: String,
     pub crc32: u32,
 }
 
-#[derive(Debug)]
-pub(super) enum LocalDirectory {
-    Start(PathBuf),
-    Progress(
-        PathBuf,
-        ReadDir,
-        Vec<FileInformation>,
-        VecDeque<PathBuf>,
-        ProgressData,
-    ),
-    Finished(Vec<FileInformation>),
+pub(super) async fn file_infos(
+    root: PathBuf,
+) -> Result<Vec<LocalFileInfo>, LocalDirectoryError> {
+    let mut nextdirs = VecDeque::new();
+    let mut file_infos = Vec::new();
+
+    let mut root_dir = tokio::fs::read_dir(&root).await?;
+    while let Some(entry) = root_dir.next_entry().await? {
+        let path = entry.path();
+        let relative_path = path.strip_prefix(&root)?;
+
+        if IGNORE_PATHS
+            .iter()
+            .any(|ignore| relative_path.starts_with(ignore))
+        {
+            continue;
+        }
+
+        if path.is_dir() {
+            nextdirs.push_back(path);
+        } else {
+            parse_file_info(&root, path, &mut file_infos).await?;
+        }
+    }
+
+    while let Some(next) = nextdirs.pop_front() {
+        let mut dir = tokio::fs::read_dir(&next).await?;
+        while let Some(entry) = dir.next_entry().await? {
+            let path = entry.path();
+            if path.is_dir() {
+                nextdirs.push_back(path);
+            } else {
+                parse_file_info(&root, path, &mut file_infos).await?;
+            }
+        }
+    }
+
+    Ok(file_infos)
 }
 
-impl LocalDirectory {
-    pub(super) async fn progress(self) -> Result<Self, LocalDirectoryError> {
-        match self {
-            LocalDirectory::Start(root) => {
-                let dir = tokio::fs::read_dir(&root).await?;
-                let progress = ProgressData::new(
-                    StepProgress::new(
-                        0,
-                        UpdateContent::HashLocalFile(root.to_string_lossy().to_string()),
-                    ),
-                    Default::default(),
-                );
-                let nextdirs = VecDeque::new();
-                Ok(Self::Progress(root, dir, Vec::new(), nextdirs, progress))
-            },
-            LocalDirectory::Progress(
-                root,
-                mut dir,
-                mut fileinfo,
-                mut nextdirs,
-                mut progress,
-            ) => match dir.next_entry().await? {
-                Some(entry) => {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        nextdirs.push_back(path);
-                    } else {
-                        let file_bytes = tokio::fs::read(&path).await?;
-                        let crc32 = crc32fast::hash(&file_bytes);
-                        let local_unix_path = path
-                            .strip_prefix(&root)?
-                            .to_str()
-                            .ok_or(LocalDirectoryError::InvalidUtf8Filename)?;
+async fn parse_file_info(
+    root: &PathBuf,
+    path: PathBuf,
+    file_infos: &mut Vec<LocalFileInfo>,
+) -> Result<(), LocalDirectoryError> {
+    let file_bytes = tokio::fs::read(&path).await?;
+    let crc32 = crc32fast::hash(&file_bytes);
+    let local_unix_path = path
+        .strip_prefix(root)?
+        .to_str()
+        .ok_or(LocalDirectoryError::InvalidUtf8Filename)?;
 
-                        #[cfg(windows)]
-                        let local_unix_path = local_unix_path.replace(r#"\"#, "/");
+    #[cfg(windows)]
+    let local_unix_path = local_unix_path.replace(r#"\"#, "/");
 
-                        let local_unix_path = local_unix_path.to_string();
+    let local_unix_path = local_unix_path.to_string();
 
-                        fileinfo.push(FileInformation {
-                            path,
-                            crc32,
-                            local_unix_path,
-                        });
-                    }
-                    Ok(Self::Progress(root, dir, fileinfo, nextdirs, progress))
-                },
-                None => {
-                    if let Some(next) = nextdirs.pop_front() {
-                        let dir = tokio::fs::read_dir(&next).await?;
-                        progress.cur_step_mut().content = UpdateContent::HashLocalFile(
-                            next.to_string_lossy().to_string(),
-                        );
-                        Ok(Self::Progress(root, dir, fileinfo, nextdirs, progress))
-                    } else {
-                        Ok(LocalDirectory::Finished(fileinfo))
-                    }
-                },
-            },
-            LocalDirectory::Finished(storage) => Ok(LocalDirectory::Finished(storage)),
-        }
+    file_infos.push(LocalFileInfo {
+        path,
+        crc32,
+        local_unix_path,
+    });
+    Ok(())
+}
+
+impl From<LocalDirectoryError> for ClientError {
+    fn from(value: LocalDirectoryError) -> Self {
+        ClientError::Custom(value.to_string())
     }
 }

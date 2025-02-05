@@ -121,7 +121,7 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
     );
     progress_bar.set_length(100);
 
-    let mut stream = update(airshipper.active_profile.clone(), false).boxed();
+    let mut stream = update(airshipper.active_profile.clone()).boxed();
 
     while let Some(progress) = stream.next().await {
         match progress {

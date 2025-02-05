@@ -1,4 +1,4 @@
-use crate::{channels::Channel, consts, fs};
+use crate::{channels::Channel, consts, fs, update::RemoteFileInfo};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -26,13 +26,13 @@ pub struct Profile {
     #[serde(rename = "directory")]
     _directory: PathBuf,
     pub version: Option<String>,
+    #[serde(default)]
+    pub rfiles: Vec<RemoteFileInfo>,
     pub wgpu_backend: WgpuBackend,
     pub log_level: LogLevel,
     pub env_vars: String,
     // TODO: make a file-picker UI for this
     pub assets_override: Option<String>,
-    // if set, on every download we do a full zip download
-    pub disable_partial_download: bool,
 
     #[serde(skip)]
     pub supported_wgpu_backends: Vec<WgpuBackend>,
@@ -157,12 +157,12 @@ impl Profile {
             server,
             channel,
             version: None,
+            rfiles: Vec::new(),
             wgpu_backend: WgpuBackend::Auto,
             log_level: LogLevel::Default,
             env_vars: String::new(),
             assets_override: None,
             supported_wgpu_backends: Vec::new(),
-            disable_partial_download: false,
         }
     }
 

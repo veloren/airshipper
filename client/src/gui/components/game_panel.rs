@@ -209,7 +209,7 @@ impl GamePanelComponent {
                 },
             },
             GamePanelMessage::StartUpdate => {
-                let state = State::ToBeEvaluated(active_profile.clone(), false);
+                let state = State::ToBeEvaluated(active_profile.clone());
 
                 let astate = Arc::new(Mutex::new(None));
                 Self::trigger_next_state(state, astate, DownloadButtonState::Checking)
@@ -464,7 +464,6 @@ impl GamePanelComponent {
                 }
 
                 let step = match step {
-                    Some(UpdateContent::DownloadFullZip) => "Redownloading",
                     Some(UpdateContent::DownloadFile(_)) => "Downloading",
                     Some(UpdateContent::Decompress(_)) => "Installing",
                     _ => "",

@@ -1,10 +1,12 @@
 use bytes::{BufMut, BytesMut};
-use std::{path::PathBuf, time::Duration};
+use std::time::Duration;
 
-use reqwest::{RequestBuilder, StatusCode};
-use tokio::{fs::File, io::AsyncWriteExt, time::Instant};
+use reqwest::{RequestBuilder, StatusCode, header::RANGE};
+use thiserror::Error;
+use tokio::time::Instant;
 
-use crate::error::ClientError;
+use super::{compare::Compared, remote::RemoteFileInfo};
+use crate::{GITHUB_CLIENT, error::ClientError, profiles::Profile};
 
 #[derive(Debug, Clone)]
 pub struct StepProgress {
@@ -30,9 +32,6 @@ pub(crate) struct ProgressData {
 
 #[derive(Debug, Clone)]
 pub enum UpdateContent {
-    CentralDirectory,
-    DownloadFullZip,
-    HashLocalFile(String),
     DownloadFile(String),
     Decompress(String),
 }
@@ -147,14 +146,28 @@ impl ProgressData {
     }
 }
 
-#[derive(Debug)]
-pub enum Storage {
-    FileInfo(PathBuf),
-    File(File),
-    Memory(BytesMut),
+pub(super) fn next_partial(
+    profile: &Profile,
+    compared: &mut Compared,
+) -> Option<Download<RemoteFileInfo>> {
+    compared.needs_download.pop().map(|remote| {
+        let range = format!("bytes={}-{}", remote.start_offset, remote.end_offset);
+        let storage = BytesMut::with_capacity(remote.compressed_size as usize);
+
+        let request_builder = GITHUB_CLIENT
+            .get(profile.download_url())
+            .header(RANGE, range);
+
+        Download::Start(
+            request_builder,
+            storage,
+            UpdateContent::DownloadFile(remote.file_name.clone()),
+            remote,
+        )
+    })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub(super) enum DownloadError {
     #[error("Reqwest: {0}")]
     Reqwest(#[from] reqwest::Error),
@@ -166,9 +179,9 @@ pub(super) enum DownloadError {
 
 #[derive(Debug)]
 pub(super) enum Download<T> {
-    Start(RequestBuilder, Storage, UpdateContent, T),
-    Progress(reqwest::Response, Storage, StepProgress, T),
-    Finished(Storage, T),
+    Start(RequestBuilder, BytesMut, UpdateContent, T),
+    Progress(reqwest::Response, BytesMut, StepProgress, T),
+    Finished(BytesMut, T),
 }
 
 impl<T> Download<T> {
@@ -182,11 +195,6 @@ impl<T> Download<T> {
                     return Err(DownloadError::InvalidStatus(response.status()));
                 }
 
-                let storage = match storage {
-                    Storage::FileInfo(path) => Storage::File(File::create(path).await?),
-                    storage => storage,
-                };
-
                 let total = response.content_length().unwrap_or_default();
                 let progress = StepProgress::new(total, content);
                 Ok(Self::Progress(response, storage, progress, c))
@@ -195,20 +203,10 @@ impl<T> Download<T> {
                 match response.chunk().await? {
                     Some(chunk) => {
                         progress.add_chunk(chunk.len() as u64);
-
-                        match &mut storage {
-                            Storage::FileInfo(_) => unreachable!(),
-                            Storage::File(ref mut file) => file.write_all(&chunk).await?,
-                            Storage::Memory(ref mut mem) => mem.put(chunk),
-                        }
+                        storage.put(chunk);
                         Ok(Self::Progress(response, storage, progress, c))
                     },
-                    None => {
-                        if let Storage::File(file) = &storage {
-                            file.sync_all().await?;
-                        }
-                        Ok(Self::Finished(storage, c))
-                    },
+                    None => Ok(Self::Finished(storage, c)),
                 }
             },
             Download::Finished(storage, c) => Ok(Download::Finished(storage, c)),
@@ -221,8 +219,6 @@ impl UpdateContent {
         match self {
             UpdateContent::DownloadFile(x) => x,
             UpdateContent::Decompress(x) => x,
-            UpdateContent::HashLocalFile(x) => x,
-            _ => "",
         }
     }
 }

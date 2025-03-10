@@ -1,37 +1,36 @@
-#![allow(clippy::nonstandard_macro_braces)]
 use std::panic;
 
-#[derive(Clone, thiserror::Error, derive_more::Display, Debug)]
+#[derive(Clone, thiserror::Error, Debug)]
 pub enum ClientError {
-    #[display("Error while performing filesystem operations.")]
+    #[error("Error while performing filesystem operations.")]
     IoError,
-    #[display("Error while performing network operations.")]
+    #[error("Error while performing network operations.")]
     NetworkError,
-    #[display("FATAL: Failed to start GUI!")]
+    #[error("FATAL: Failed to start GUI!")]
     IcedError,
-    #[display("FATAL: Failed to save/load airshipper configuration!")]
+    #[error("FATAL: Failed to save/load airshipper configuration!")]
     RonError,
-    #[display("Failed to parse Veloren News.")]
+    #[error("Failed to parse Veloren News.")]
     RssError,
-    #[display("Failed to open webbrowser.")]
+    #[error("Failed to open webbrowser.")]
     OpenerError,
-    #[display("Error with downloaded veloren archive.")]
-    ArchiveError,
-    #[display("Error parsing url.")]
+    #[error("Error parsing url.")]
     UrlParseError,
-    #[display("Error reading input.")]
+    #[error("Error reading input.")]
     ReadlineError,
-    #[display("Error parsing image.")]
+    #[error("Error parsing image.")]
     ImageError,
+    #[error("Error performing a task.")]
+    TaskError,
 
     #[cfg(windows)]
-    #[display("FATAL: Failed to update airshipper!")]
+    #[error("FATAL: Failed to update airshipper!")]
     UpdateError,
     #[cfg(windows)]
-    #[display("Failed to parse version.")]
+    #[error("Failed to parse version.")]
     VersionError,
 
-    #[display("{}", "_0")]
+    #[error("{0}")]
     Custom(String),
 }
 
@@ -62,10 +61,10 @@ impl_from!(reqwest::Error, ClientError::NetworkError);
 impl_from!(ron::Error, ClientError::RonError);
 impl_from!(rss::Error, ClientError::RssError);
 impl_from!(opener::OpenError, ClientError::OpenerError);
-impl_from!(zip::result::ZipError, ClientError::ArchiveError);
 impl_from!(url::ParseError, ClientError::UrlParseError);
 impl_from!(iced::Error, ClientError::IcedError);
 impl_from!(image::error::ImageError, ClientError::ImageError);
+impl_from!(tokio::task::JoinError, ClientError::TaskError);
 #[cfg(windows)]
 impl_from!(self_update::errors::Error, ClientError::UpdateError);
 #[cfg(windows)]

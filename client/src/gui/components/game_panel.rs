@@ -1,6 +1,5 @@
 use crate::{
     assets::{DOWNLOAD_ICON, POPPINS_BOLD_FONT, POPPINS_MEDIUM_FONT, SETTINGS_ICON},
-    error::ClientError,
     gui::{
         custom_widgets::heading_with_rule,
         style::{
@@ -20,7 +19,7 @@ use crate::{
     io::ProcessUpdate,
     logger::{pretty_bytes, redirect_voxygen_log},
     profiles::Profile,
-    update::{Progress, State, UpdateContent},
+    update::{Progress, State},
 };
 use iced::{
     Alignment, Command, Length,
@@ -129,10 +128,8 @@ impl GamePanelComponent {
                             Some((progress, state)) => {
                                 lstate = state;
                                 last_progress = Some(progress);
-                                if matches!(
-                                    last_progress,
-                                    Some(Progress::ReadyToDownload)
-                                ) {
+                                if matches!(last_progress, Some(Progress::ReadyToSync(_)))
+                                {
                                     // wait for user input!
                                     break;
                                 }
@@ -220,24 +217,7 @@ impl GamePanelComponent {
                 match progress {
                     Some(Progress::Errored(err)) => {
                         tracing::error!("Download failed with: {}", err);
-                        let mut profile = active_profile.clone();
-                        profile.version = None;
-                        let next_state = if matches!(err, ClientError::NetworkError) {
-                            if active_profile.installed() {
-                                GamePanelState::Offline(true)
-                            } else {
-                                GamePanelState::Offline(false)
-                            }
-                        } else {
-                            GamePanelState::Retry
-                        };
-                        (
-                            Some(next_state),
-                            Some(Command::perform(
-                                async { Action::UpdateProfile(profile) },
-                                DefaultViewMessage::Action,
-                            )),
-                        )
+                        (Some(GamePanelState::Retry), None)
                     },
                     Some(Progress::Successful(profile)) => (
                         Some(GamePanelState::ReadyToPlay),
@@ -246,7 +226,11 @@ impl GamePanelComponent {
                             DefaultViewMessage::Action,
                         )),
                     ),
-                    Some(Progress::InProgress(_)) | Some(Progress::Evaluating) => {
+                    Some(Progress::Offline) => (
+                        Some(GamePanelState::Offline(active_profile.installed())),
+                        None,
+                    ),
+                    Some(Progress::Syncing(_)) | Some(Progress::Evaluating) => {
                         if let GamePanelState::Updating { astate, btnstate } = &self.state
                         {
                             let state = {
@@ -269,8 +253,8 @@ impl GamePanelComponent {
                             (None, None)
                         }
                     },
-                    Some(Progress::ReadyToDownload) => {
-                        tracing::info!("Need to confirm the update");
+                    Some(Progress::ReadyToSync(profile)) => {
+                        tracing::debug!("Need to confirm the update");
                         (
                             if let GamePanelState::Updating { astate, .. } = &self.state {
                                 Some(GamePanelState::Updating {
@@ -280,7 +264,10 @@ impl GamePanelComponent {
                             } else {
                                 None
                             },
-                            None,
+                            Some(Command::perform(
+                                async { Action::UpdateProfile(profile) },
+                                DefaultViewMessage::Action,
+                            )),
                         )
                     },
                     None => (None, None),
@@ -398,25 +385,21 @@ impl GamePanelComponent {
             {
                 // When the game is downloading, the download progress bar and related
                 // stats replace the Launch / Update button
-                let (percent, total, downloaded, bytes_per_sec, remaining, step) =
-                    match self
-                        .download_progress
-                        .as_ref()
-                        .unwrap_or(&Progress::Evaluating)
-                    {
-                        Progress::InProgress(progress_data) => (
-                            progress_data.cur_step().percent_complete() as f32,
-                            progress_data.cur_step().total_bytes,
-                            progress_data.cur_step().processed_bytes,
-                            progress_data.overall().bytes_per_sec(),
-                            progress_data.cur_step_remaining(),
-                            Some(progress_data.cur_step().content.clone()),
-                        ),
-                        Progress::Successful(_) => {
-                            (100.0, 0, 0, 0, Duration::from_secs(0), None)
-                        },
-                        _ => (0.0, 0, 0, 0, Duration::from_secs(0), None),
-                    };
+                let (percent, total, downloaded, bytes_per_sec, remaining) = match self
+                    .download_progress
+                    .as_ref()
+                    .unwrap_or(&Progress::Evaluating)
+                {
+                    Progress::Syncing(progress_data) => (
+                        progress_data.percent_complete() as f32,
+                        progress_data.total_bytes,
+                        progress_data.processed_bytes,
+                        progress_data.bytes_per_sec,
+                        progress_data.time_remaining(),
+                    ),
+                    Progress::Successful(_) => (100.0, 0, 0, 0, Duration::from_secs(0)),
+                    _ => (0.0, 0, 0, 0, Duration::from_secs(0)),
+                };
 
                 let download_rate = bytes_per_sec as f32 / 1_000_000.0;
 
@@ -463,10 +446,10 @@ impl GamePanelComponent {
                         );
                 }
 
-                let step = match step {
-                    Some(UpdateContent::DownloadFile(_)) => "Downloading",
-                    Some(UpdateContent::Decompress(_)) => "Installing",
-                    _ => "",
+                let step = if total == downloaded {
+                    "Finalizing"
+                } else {
+                    "Downloading"
                 };
 
                 container(

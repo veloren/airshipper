@@ -4,11 +4,9 @@ use super::{local_directory::LocalFileInfo, remote::RemoteFileInfo};
 
 #[derive(Debug)]
 pub(super) struct Compared {
-    pub needs_download: Vec<RemoteFileInfo>,
+    pub needs_download: Vec<Vec<RemoteFileInfo>>,
     pub needs_deletion: Vec<LocalFileInfo>,
     pub needs_download_bytes: u64,
-    pub needs_deletion_total: u64,
-    pub clean_data_total: u64,
 }
 
 pub(super) fn build_compared(
@@ -32,45 +30,69 @@ pub(super) fn build_compared(
         e.1 = Some(r);
     }
 
-    let mut needs_download = Vec::new();
+    let mut needs_download_flat = Vec::new();
     let mut needs_deletion = Vec::new();
-    let mut clean_data_total = 0;
+    let mut clean_bytes_total = 0;
 
     for value in compare_map.into_values() {
         match (value.0, value.1) {
             (None, Some(remote)) => {
-                needs_download.push(remote);
+                needs_download_flat.push(remote);
             },
             (Some(local), None) => {
                 needs_deletion.push(local);
             },
             (Some(local), Some(remote)) => {
-                if local.crc32 == remote.crc32 {
-                    clean_data_total += remote.compressed_size as u64;
+                if let Some(patch_crc32) = remote.patch_crc32 {
+                    if local.crc32 == patch_crc32 {
+                        clean_bytes_total += remote.compressed_size as u64;
+                    } else {
+                        needs_download_flat.push(remote);
+                    }
+                } else if local.crc32 == remote.crc32 {
+                    clean_bytes_total += remote.compressed_size as u64;
                 } else {
-                    needs_download.push(remote);
+                    needs_download_flat.push(remote);
                 }
             },
             (None, None) => unreachable!(),
         }
     }
 
+    tracing::debug!(?clean_bytes_total);
+
+    needs_download_flat.sort_by_key(|e| e.index);
+    needs_download_flat.reverse();
+
+    let mut needs_download = Vec::new();
+    let mut download_batch = Vec::new();
+    let mut download_peek = needs_download_flat.iter().skip(1);
+
+    for rfi in needs_download_flat.iter() {
+        download_batch.push(rfi.clone());
+        if let Some(next) = download_peek.next() {
+            if next.index != rfi.index - 1 {
+                needs_download.push(download_batch.clone());
+                download_batch = Vec::new();
+            }
+        } else {
+            needs_download.push(download_batch.clone());
+        }
+    }
+
     let needs_download_bytes = needs_download
         .iter()
-        .map(|remote| remote.compressed_size as u64)
+        // since batches are sorted we can take the first and last elements
+        // instead of doing max and min
+        .map(|batch| {
+            let mut iter = batch.iter().peekable();
+            iter.peek().unwrap().end_offset as u64 - iter.last().unwrap().start_offset as u64
+        })
         .sum();
-    let needs_deletion_total = needs_deletion.len() as u64;
-
-    //reorder based by range, so that we read from low to high, in the hope that its
-    // better for the remote spinning disk. but reversed, because we .pop from this Vec
-    needs_download.sort_by_key(|e| e.start_offset);
-    needs_download.reverse();
 
     Compared {
         needs_download,
         needs_deletion,
         needs_download_bytes,
-        needs_deletion_total,
-        clean_data_total,
     }
 }

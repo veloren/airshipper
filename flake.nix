@@ -37,23 +37,30 @@
         ];
     };
 
-    makePatcher = pkgs: let
+    makeVoxygenPatcher = pkgs: let
       runtimeLibs = with pkgs; (
         [libxkbcommon udev alsa-lib stdenv.cc.cc.lib libGL vulkan-loader]
         ++ (with xorg; [libxcb libX11 libXrandr libXi libXcursor])
       );
     in
-      pkgs.writeShellScript "patch" ''
-        echo "making binaries executable"
-        chmod +x {veloren-voxygen,veloren-server-cli}
-        echo "patching dynamic linkers"
-        ${pkgs.patchelf}/bin/patchelf \
-          --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" \
-          veloren-server-cli
+      pkgs.writeShellScript "voxygen-patch" ''
+        echo "making veloren-voxygen executable"
+        chmod +x veloren-voxygen
+        echo "patching veloren-voxygen dynamic linker"
         ${pkgs.patchelf}/bin/patchelf \
           --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" \
           --set-rpath "${lib.makeLibraryPath runtimeLibs}" \
           veloren-voxygen
+      '';
+
+    makeServerPatcher = pkgs:
+      pkgs.writeShellScript "server-cli-patch" ''
+        echo "making veloren-server-cli executable"
+        chmod +x veloren-server-cli
+        echo "patching veloren-server-cli dynamic linker"
+        ${pkgs.patchelf}/bin/patchelf \
+          --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" \
+          veloren-server-cli
       '';
   in
     inputs.nci.lib.makeOutputs {
@@ -92,7 +99,8 @@
           cleaned-src = {src = cleanedSrc;};
         };
         airshipper.wrapper = _: old: let
-          patcher = makePatcher pkgs;
+          voxygenPatcher = makeVoxygenPatcher pkgs;
+          serverPatcher = makeServerPatcher pkgs;
         in
           common.internal.pkgsSet.utils.wrapDerivation old
           {nativeBuildInputs = [pkgs.makeWrapper];}
@@ -100,7 +108,9 @@
             rm -rf $out/bin
             mkdir -p $out/bin
             ln -sf ${old}/bin/* $out/bin
-            wrapProgram $out/bin/* --set VELOREN_PATCHER "${patcher}"
+            wrapProgram $out/bin/* \
+            --set VELOREN_VOXYGEN_PATCHER "${voxygenPatcher}" \
+            --set VELOREN_SERVER_CLI_PATCHER "${serverPatcher}"
           '';
       };
     };

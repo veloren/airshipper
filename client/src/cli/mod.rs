@@ -135,7 +135,12 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
                 progress_bar.set_message("Evaluating Update");
                 progress_bar.set_position(next);
             },
-            Progress::ReadyToDownload => {
+            Progress::ReadyToSync(new_profile) => {
+                tracing::debug!("Updating profile");
+                airshipper.active_profile = new_profile;
+                // Save state
+                airshipper.save_mut().await?;
+
                 if !do_not_ask {
                     tracing::info!("Update found, do you want to update? [Y/n]");
                     if !confirm_action()? {
@@ -145,25 +150,28 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
                     }
                 }
             },
-            Progress::InProgress(progress_data) => {
-                let step = progress_data.cur_step();
-                let file_info = match step.content.show() {
-                    "" => "".to_string(),
-                    s => format!(": {s}"),
+            Progress::Syncing(progress_data) => {
+                let step = if progress_data.total_bytes == progress_data.processed_bytes {
+                    "Finalizing"
+                } else {
+                    "Downloading"
                 };
-                progress_bar.set_position(step.percent_complete());
+                progress_bar.set_position(progress_data.percent_complete());
                 progress_bar.set_message(format!(
-                    "{} / {} {file_info}",
-                    pretty_bytes(step.processed_bytes),
-                    pretty_bytes(step.total_bytes),
+                    "{} / {} ({step})",
+                    pretty_bytes(progress_data.processed_bytes),
+                    pretty_bytes(progress_data.total_bytes),
                 ));
             },
             Progress::Successful(new_profile) => {
-                tracing::debug!(?new_profile, "Updating profile");
+                tracing::debug!("Updating profile");
                 airshipper.active_profile = new_profile;
                 return Ok(());
             },
             Progress::Errored(e) => return Err(ClientError::Custom(e.to_string())),
+            Progress::Offline => {
+                return Err(ClientError::Custom("No internet connection".to_string()));
+            },
         }
     }
     Ok(())

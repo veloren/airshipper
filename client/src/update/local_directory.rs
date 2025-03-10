@@ -1,7 +1,4 @@
-use std::{
-    collections::VecDeque,
-    path::{PathBuf, StripPrefixError},
-};
+use std::path::{PathBuf, StripPrefixError};
 use thiserror::Error;
 
 use crate::ClientError;
@@ -11,18 +8,24 @@ const IGNORE_PATHS: &[&str] = &["userdata/", "screenshots/", "maps/"];
 
 #[derive(Error, Debug)]
 pub(super) enum LocalDirectoryError {
-    #[error("tokio Error: ")]
-    Tokio(#[from] std::io::Error),
+    #[error("Input/Output Error: ")]
+    InputOutput(#[from] std::io::Error),
     #[error("Invalid UTF8-Filename. this code requires filenames to match UTF8")]
     InvalidUtf8Filename,
     #[error("FileName not within Root Directory, is this some escape attack?")]
     StripPrefixError(#[from] StripPrefixError),
 }
 
+impl From<LocalDirectoryError> for ClientError {
+    fn from(value: LocalDirectoryError) -> Self {
+        ClientError::Custom(value.to_string())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct LocalFileInfo {
     pub path: PathBuf,
-    // with stripped prefix with / as file ending
+    // with stripped prefix
     pub local_unix_path: String,
     pub crc32: u32,
 }
@@ -30,7 +33,7 @@ pub(super) struct LocalFileInfo {
 pub(super) async fn file_infos(
     root: PathBuf,
 ) -> Result<Vec<LocalFileInfo>, LocalDirectoryError> {
-    let mut nextdirs = VecDeque::new();
+    let mut nextdirs = Vec::new();
     let mut file_infos = Vec::new();
 
     let mut root_dir = tokio::fs::read_dir(&root).await?;
@@ -46,18 +49,18 @@ pub(super) async fn file_infos(
         }
 
         if path.is_dir() {
-            nextdirs.push_back(path);
+            nextdirs.push(path);
         } else {
             parse_file_info(&root, path, &mut file_infos).await?;
         }
     }
 
-    while let Some(next) = nextdirs.pop_front() {
+    while let Some(next) = nextdirs.pop() {
         let mut dir = tokio::fs::read_dir(&next).await?;
         while let Some(entry) = dir.next_entry().await? {
             let path = entry.path();
             if path.is_dir() {
-                nextdirs.push_back(path);
+                nextdirs.push(path);
             } else {
                 parse_file_info(&root, path, &mut file_infos).await?;
             }
@@ -90,10 +93,4 @@ async fn parse_file_info(
         local_unix_path,
     });
     Ok(())
-}
-
-impl From<LocalDirectoryError> for ClientError {
-    fn from(value: LocalDirectoryError) -> Self {
-        ClientError::Custom(value.to_string())
-    }
 }

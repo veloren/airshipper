@@ -11,16 +11,6 @@ use zip_core::{
 
 use crate::{ClientError, GITHUB_CLIENT, WEB_CLIENT, profiles::Profile};
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct RemoteFileInfo {
-    pub crc32: u32,
-    pub compressed_size: u32,
-    pub compression_method: u16,
-    pub file_name: String,
-    pub start_offset: u32,
-    pub end_offset: u32,
-}
-
 #[derive(Debug, Error)]
 pub(super) enum RemoteError {
     #[error("Reqwest Error: ")]
@@ -35,6 +25,27 @@ pub(super) enum RemoteError {
     NoCentralDirectoryHeaderFound,
     #[error("Remote Zip invalid, CentralDirectoryHeader has invalid file name")]
     InvalidFileName,
+}
+
+impl From<RemoteError> for ClientError {
+    fn from(value: RemoteError) -> Self {
+        match value {
+            RemoteError::Reqwest(e) => e.into(),
+            e => ClientError::Custom(e.to_string()),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct RemoteFileInfo {
+    pub crc32: u32,
+    pub compressed_size: u32,
+    pub compression_method: u16,
+    pub file_name: String,
+    pub start_offset: u32,
+    pub end_offset: u32,
+    pub index: usize,
+    pub patch_crc32: Option<u32>,
 }
 
 const APPROX_MTU: u64 = 1400;
@@ -55,6 +66,7 @@ pub(super) async fn rfile_infos(
         .iter()
         .skip(1)
         .map(|cd| cd.fixed.relative_offset_of_local_header);
+
     let rfiles = cds.iter().map(|cd| Ok(RemoteFileInfo {
         crc32: cd.fixed.crc_32,
         compressed_size: cd.fixed.compressed_size,
@@ -62,11 +74,23 @@ pub(super) async fn rfile_infos(
         file_name: String::from_utf8(cd.file_name.clone()).map_err(|_| RemoteError::InvalidFileName)?,
         start_offset: cd.fixed.relative_offset_of_local_header,
         end_offset: next_offsets.next().unwrap_or(eocd.fixed.offset_of_start_of_central_directory_with_respect_to_the_starting_disk_number),
+        index: 0,
+        patch_crc32: None,
     })).collect::<Result<Vec<_>, RemoteError>>()?;
-    Ok(rfiles
+
+    let rfiles: Vec<_> = rfiles
         .into_iter()
         .filter(|rfi| rfi.compressed_size != 0)
-        .collect())
+        .enumerate()
+        .map(|(index, rfi)| RemoteFileInfo { index, ..rfi })
+        .collect();
+
+    if rfiles.iter().any(|rfi| rfi.file_name.contains('\0')) {
+        // No NULL bytes pls
+        Err(RemoteError::InvalidFileName)
+    } else {
+        Ok(rfiles)
+    }
 }
 
 async fn download_eocd(url: &str) -> Result<EndOfCentralDirectory, RemoteError> {
@@ -118,13 +142,4 @@ async fn download_cds(
     }
 
     Ok(cds)
-}
-
-impl From<RemoteError> for ClientError {
-    fn from(value: RemoteError) -> Self {
-        match value {
-            RemoteError::Reqwest(_) => ClientError::NetworkError,
-            e => ClientError::Custom(e.to_string()),
-        }
-    }
 }

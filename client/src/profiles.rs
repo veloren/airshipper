@@ -193,10 +193,6 @@ impl Profile {
         )
     }
 
-    pub fn download_path(&self) -> PathBuf {
-        self.directory().join(consts::DOWNLOAD_FILE)
-    }
-
     pub(crate) fn version_url(&self) -> String {
         format!(
             "{}/version/{}/{}/{}",

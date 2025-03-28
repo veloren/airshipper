@@ -11,7 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
+- The update mechanism has been rewritten to optimize for speed by increasing parallelism.
+
 ## Fixed
+
+- `bundled_font` feature should now work correctly.
+- The time to check for updates should be far shorter in cases where there isn't an update.
 
 ## [0.16.0] - 2024-12-28
 

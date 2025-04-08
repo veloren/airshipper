@@ -23,15 +23,15 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct DownloadProgress {
-    pub total_bytes: u64,
-    pub processed_bytes: u64,
+pub struct ProgressDetails {
+    total_bytes: u64,
+    processed_bytes: u64,
     last_rate_check: Instant,
     downloaded_since_last_check: u64,
-    pub bytes_per_sec: u64,
+    bytes_per_sec: u64,
 }
 
-impl DownloadProgress {
+impl ProgressDetails {
     pub fn new(total_bytes: u64) -> Self {
         Self {
             total_bytes,
@@ -45,6 +45,14 @@ impl DownloadProgress {
     pub fn add_chunk(&mut self, data: u64) {
         self.processed_bytes += data;
         self.downloaded_since_last_check += data;
+
+        if self.processed_bytes > self.total_bytes {
+            let process = &self;
+            tracing::warn!(
+                ?process,
+                "Processed Bytes is larger than Total Bytes, something seems off"
+            );
+        }
 
         let current_time = Instant::now();
         let since_last_check = current_time - self.last_rate_check;
@@ -64,19 +72,23 @@ impl DownloadProgress {
         }
     }
 
+    pub fn total_bytes(&self) -> u64 {
+        self.total_bytes
+    }
+
+    pub fn processed_bytes(&self) -> u64 {
+        self.processed_bytes
+    }
+
+    pub fn bytes_per_sec(&self) -> u64 {
+        self.bytes_per_sec
+    }
+
     pub fn percent_complete(&self) -> u64 {
         self.processed_bytes * 100 / self.total_bytes
     }
 
     pub fn time_remaining(&self) -> Duration {
-        if self.processed_bytes > self.total_bytes {
-            let process = &self;
-            tracing::warn!(
-                ?process,
-                "Processed Bytes is larger than Total Bytes, something seems off"
-            );
-        }
-
         Duration::from_secs_f32(
             (self.total_bytes.saturating_sub(self.processed_bytes)) as f32
                 / self.bytes_per_sec.max(1) as f32,
@@ -149,8 +161,18 @@ pub(super) async fn download_batch(
     let start_offset = iter.last().unwrap().start_offset;
 
     let range = format!("bytes={}-{}", start_offset, end_offset);
-    let request = GITHUB_CLIENT.get(url).header(RANGE, range);
+    let request = GITHUB_CLIENT.get(&url).header(RANGE, &range);
+    let before = Instant::now();
     let mut response = request.send().await?;
+    let elapsed = before.elapsed();
+    let batchsize = batch.len();
+    tracing::trace!(
+        ?url,
+        ?elapsed,
+        ?range,
+        ?batchsize,
+        "fetched batch metadata from zip"
+    );
 
     if !response.status().is_success() {
         return Err(SyncError::InvalidStatus(response.status()));

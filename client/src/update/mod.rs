@@ -4,7 +4,7 @@ use crate::{error::ClientError, profiles::Profile};
 use compare::Compared;
 use futures_util::stream::Stream;
 use iced::futures;
-use sync::{DeleteResult, DownloadProgress, DownloadResult, UnzipResult};
+use sync::{DeleteResult, DownloadResult, ProgressDetails, UnzipResult};
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
     task::JoinHandle,
@@ -24,7 +24,7 @@ pub(crate) enum Progress {
     /// If the consumer sees ReadyToSync a download is necessary, but they can
     /// implement logic to avoid any download
     ReadyToSync(Profile),
-    Syncing(DownloadProgress),
+    Syncing(ProgressDetails),
     Successful(Profile),
     Errored(ClientError),
     Offline,
@@ -38,7 +38,7 @@ pub(super) enum State {
     Sync(
         Profile,
         Vec<Vec<RemoteFileInfo>>,
-        DownloadProgress,
+        ProgressDetails,
         Vec<JoinHandle<DownloadResult>>,
         Vec<JoinHandle<UnzipResult>>,
         JoinHandle<DeleteResult>,
@@ -70,7 +70,7 @@ impl State {
     }
 }
 
-// checks if an update is necessary
+/// checks if an update is necessary
 async fn evaluate(
     mut profile: Profile,
 ) -> Result<Option<(Progress, State)>, ClientError> {
@@ -141,13 +141,13 @@ async fn evaluate(
     )))
 }
 
-// initializes the sync loop, this is separate mostly just because of the
-// delete handle that I didn't want to make an Option<JoinHandle<_>>
+/// initializes the sync loop, this is separate mostly just because of the
+/// delete handle that I didn't want to make an Option<JoinHandle<_>>
 async fn initialize_sync(
     profile: Profile,
     compared: Compared,
 ) -> Result<Option<(Progress, State)>, ClientError> {
-    let progress = DownloadProgress::new(compared.needs_download_bytes);
+    let progress = ProgressDetails::new(compared.needs_download_bytes);
     let (tx, rx) = unbounded_channel::<u64>();
     Ok(Some((
         Progress::Syncing(progress.clone()),
@@ -164,11 +164,12 @@ async fn initialize_sync(
     )))
 }
 
-// does the update
+/// coordinates the update: download of new chunks, unzipping files and writing them to
+/// disk
 async fn sync(
     mut profile: Profile,
     mut needs_download: Vec<Vec<RemoteFileInfo>>,
-    mut progress: DownloadProgress,
+    mut progress: ProgressDetails,
     (download_handles, mut unzip_handles, delete_handle): (
         Vec<JoinHandle<DownloadResult>>,
         Vec<JoinHandle<UnzipResult>>,

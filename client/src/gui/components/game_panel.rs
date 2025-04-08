@@ -392,9 +392,9 @@ impl GamePanelComponent {
                 {
                     Progress::Syncing(progress_data) => (
                         progress_data.percent_complete() as f32,
-                        progress_data.total_bytes,
-                        progress_data.processed_bytes,
-                        progress_data.bytes_per_sec,
+                        progress_data.total_bytes(),
+                        progress_data.processed_bytes(),
+                        progress_data.bytes_per_sec(),
                         progress_data.time_remaining(),
                     ),
                     Progress::Successful(_) => (100.0, 0, 0, 0, Duration::from_secs(0)),

@@ -5,9 +5,7 @@ use reqwest::{StatusCode, header::RANGE};
 use std::os::unix::fs::PermissionsExt;
 use std::{convert::TryFrom, io::Read, path::PathBuf, time::Duration};
 use thiserror::Error;
-use tokio::{
-    io::AsyncWriteExt, sync::mpsc::UnboundedSender, task::JoinHandle, time::Instant,
-};
+use tokio::{io::AsyncWriteExt, sync::mpsc::UnboundedSender, time::Instant};
 use zip_core::{
     Signature,
     raw::{LocalFileHeader, parse::Parse},
@@ -143,14 +141,17 @@ impl From<SyncError> for ClientError {
 
 pub(super) type DeleteResult = Result<(), SyncError>;
 pub(super) type UnzipResult = Result<Option<(u32, String)>, SyncError>;
-pub(super) type DownloadResult = Result<Vec<JoinHandle<UnzipResult>>, SyncError>;
+pub(super) type DownloadResult = Result<(), SyncError>;
 
-pub(super) async fn download_batch(
+pub(super) async fn download_batch<F>(
     url: String,
     mut batch: Vec<RemoteFileInfo>,
-    dir: PathBuf,
     tx: UnboundedSender<u64>,
-) -> DownloadResult {
+    f: F,
+) -> DownloadResult
+where
+    F: Fn(BytesMut, RemoteFileInfo),
+{
     if batch.is_empty() {
         // do not.
         return Err(SyncError::EmptyDownload);
@@ -179,106 +180,62 @@ pub(super) async fn download_batch(
     }
 
     let mut storage = BytesMut::with_capacity((end_offset - start_offset) as usize);
-    let mut unzip_handles = Vec::new();
     let mut consumed: usize = 0;
     let mut next_rfile = batch.pop().unwrap();
 
-    // Since we don't want to leave JoinHandles dangling without being awaited
-    // (if the program terminates before a task completes, said task would be
-    // cancelled mid-processing which would not be ideal),
-    // instead of using the normal ? operator for errors we have to await all
-    // the handles first. Ergo, this mess.
-    loop {
-        match response.chunk().await {
-            Ok(Some(chunk)) => {
-                if let Err(e) = tx.send(chunk.len() as u64) {
-                    for handle in unzip_handles.into_iter() {
-                        let _ = handle.await;
-                    }
-                    return Err(e.into());
-                }
-                storage.put(chunk);
-                loop {
-                    if (next_rfile.start_offset - start_offset) as usize == consumed {
-                        let full_size: usize =
-                            (next_rfile.end_offset - next_rfile.start_offset) as usize;
-                        if full_size <= storage.len() {
-                            let mut bytes = storage.split_to(full_size);
-                            consumed += full_size;
-                            match LocalFileHeader::from_buf(&mut bytes) {
-                                Err(e) => {
-                                    for handle in unzip_handles.into_iter() {
-                                        let _ = handle.await;
-                                    }
-                                    return Err(e.into());
-                                },
-                                Ok(header) => {
-                                    if header.is_valid_signature() {
-                                        // Why are there 16 extra bytes at the end here
-                                        // that we don't need? beats me
-                                        unzip_handles.push(tokio::spawn(unzip_file(
-                                            bytes.split_to(
-                                                next_rfile.compressed_size as usize,
-                                            ),
-                                            next_rfile,
-                                            dir.clone(),
-                                        )));
-                                        if let Some(next) = batch.pop() {
-                                            next_rfile = next;
-                                        } else {
-                                            return Ok(unzip_handles);
-                                        }
-                                    } else {
-                                        for handle in unzip_handles.into_iter() {
-                                            let _ = handle.await;
-                                        }
-                                        return Err(
-                                            SyncError::InvalidLocalHeaderSignature,
-                                        );
-                                    }
-                                },
-                            }
+    while let Some(chunk) = response.chunk().await? {
+        tx.send(chunk.len() as u64)?;
+        storage.put(chunk);
+
+        loop {
+            if (next_rfile.start_offset - start_offset) as usize == consumed {
+                let full_size: usize =
+                    (next_rfile.end_offset - next_rfile.start_offset) as usize;
+                if full_size <= storage.len() {
+                    let mut bytes = storage.split_to(full_size);
+                    consumed += full_size;
+                    let header = LocalFileHeader::from_buf(&mut bytes)?;
+                    if header.is_valid_signature() {
+                        // Why are there 16 extra bytes at the end here
+                        // that we don't need? beats me
+                        //
+                        let data = bytes.split_to(next_rfile.compressed_size as usize);
+                        f(data, next_rfile);
+                        if let Some(next) = batch.pop() {
+                            next_rfile = next;
                         } else {
-                            break;
+                            return Ok(());
                         }
                     } else {
-                        // it's safe to assume that
-                        // (next_rfile.start_offset - start_offset) > consumed
-                        // which means there's some junk to clear
-                        let junk_len: usize = next_rfile.start_offset as usize
-                            - start_offset as usize
-                            - consumed;
-                        if junk_len <= storage.len() {
-                            let _ = storage.split_to(junk_len);
-                            consumed += junk_len;
-                        } else {
-                            break;
-                        }
+                        return Err(SyncError::InvalidLocalHeaderSignature);
                     }
-                }
-            },
-            Ok(None) => {
-                if batch.is_empty() {
-                    return Ok(unzip_handles);
                 } else {
-                    // something's off
-                    for handle in unzip_handles.into_iter() {
-                        let _ = handle.await;
-                    }
-                    return Err(SyncError::WrongDownloadRange);
+                    break;
                 }
-            },
-            Err(e) => {
-                for handle in unzip_handles.into_iter() {
-                    let _ = handle.await;
+            } else {
+                // it's safe to assume that
+                // (next_rfile.start_offset - start_offset) > consumed
+                // which means there's some junk to clear
+                let junk_len: usize =
+                    next_rfile.start_offset as usize - start_offset as usize - consumed;
+                if junk_len <= storage.len() {
+                    let _ = storage.split_to(junk_len);
+                    consumed += junk_len;
+                } else {
+                    break;
                 }
-                return Err(e.into());
-            },
+            }
         }
+    }
+
+    if batch.is_empty() {
+        Ok(())
+    } else {
+        Err(SyncError::WrongDownloadRange)
     }
 }
 
-async fn unzip_file(
+pub(super) async fn unzip_file(
     mut compressed: BytesMut,
     rfile: RemoteFileInfo,
     dir: PathBuf,

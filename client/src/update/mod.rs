@@ -1,6 +1,10 @@
-use std::convert::TryFrom;
+use std::{
+    convert::TryFrom,
+    sync::{Arc, Mutex},
+};
 
 use crate::{error::ClientError, profiles::Profile};
+use bytes::BytesMut;
 use compare::Compared;
 use futures_util::stream::Stream;
 use iced::futures;
@@ -40,8 +44,9 @@ pub(super) enum State {
         Vec<Vec<RemoteFileInfo>>,
         ProgressDetails,
         Vec<JoinHandle<DownloadResult>>,
-        Vec<JoinHandle<UnzipResult>>,
+        Arc<Mutex<Vec<JoinHandle<UnzipResult>>>>,
         JoinHandle<DeleteResult>,
+        Vec<UnzipResult>,
         UnboundedReceiver<u64>,
         UnboundedSender<u64>,
     ),
@@ -58,8 +63,8 @@ impl State {
         let res = match self {
             State::ToBeEvaluated(p) => evaluate(p).await,
             State::InitializeSync(p, c) => initialize_sync(p, c).await,
-            State::Sync(p, nd, dowp, dowh, uh, delh, rx, tx) => {
-                sync(p, nd, dowp, (dowh, uh, delh), (rx, tx)).await
+            State::Sync(p, nd, dowp, dowh, uh, delh, ur, rx, tx) => {
+                sync(p, nd, dowp, (dowh, uh, delh), ur, (rx, tx)).await
             },
             State::Finished => Ok(None),
         };
@@ -156,8 +161,9 @@ async fn initialize_sync(
             compared.needs_download,
             progress,
             Vec::new(),
-            Vec::new(),
+            Arc::new(Mutex::new(Vec::new())),
             tokio::spawn(sync::remove_files(compared.needs_deletion)),
+            Vec::new(),
             rx,
             tx,
         ),
@@ -166,77 +172,89 @@ async fn initialize_sync(
 
 /// coordinates the update: download of new chunks, unzipping files and writing them to
 /// disk
+#[expect(clippy::type_complexity)]
 async fn sync(
     mut profile: Profile,
     mut needs_download: Vec<Vec<RemoteFileInfo>>,
     mut progress: ProgressDetails,
-    (download_handles, mut unzip_handles, delete_handle): (
+    (mut download_handles, mut unzip_handles, delete_handle): (
         Vec<JoinHandle<DownloadResult>>,
-        Vec<JoinHandle<UnzipResult>>,
+        Arc<Mutex<Vec<JoinHandle<UnzipResult>>>>,
         JoinHandle<DeleteResult>,
     ),
+    mut unzip_results: Vec<UnzipResult>,
     (mut rx, tx): (UnboundedReceiver<u64>, UnboundedSender<u64>),
 ) -> Result<Option<(Progress, State)>, ClientError> {
     const NUM_PARALLEL_DOWNLOADS: usize = 15;
     if needs_download.is_empty() && download_handles.is_empty() {
-        tracing::info!("Download complete. Finalizing installation...");
-        let mut unzip_results = Vec::new();
-        for handle in unzip_handles {
-            unzip_results.push(handle.await);
-        }
-        delete_handle.await??;
-        for result in unzip_results {
-            if let Some((patch_crc32, file_name)) = result?? {
-                // since the executables are at the end I assume rev will be faster
-                for rfile in profile.rfiles.iter_mut().rev() {
-                    if *rfile.file_name == file_name {
-                        rfile.patch_crc32 = Some(patch_crc32);
-                        break;
+        // when `get_mut` succeeds all unzips have been added, because there exist no
+        // further references to this arc.
+        if let Some(unzip_handles) = Arc::get_mut(&mut unzip_handles) {
+            let unzip_finished = unzip_handles.get_mut().unwrap().is_empty();
+            if unzip_finished {
+                tracing::info!("Download complete. Unzip complete. Deleting entries now");
+                delete_handle.await??;
+
+                tracing::debug!("Storing patches to profile");
+                for result in unzip_results {
+                    if let Some((patch_crc32, file_name)) = result? {
+                        // since the executables are at the end I assume rev will be
+                        // faster
+                        for rfile in profile.rfiles.iter_mut().rev() {
+                            if *rfile.file_name == file_name {
+                                rfile.patch_crc32 = Some(patch_crc32);
+                                break;
+                            }
+                        }
                     }
                 }
+                return Ok(Some((Progress::Successful(profile), State::Finished)));
             }
         }
-        return Ok(Some((Progress::Successful(profile), State::Finished)));
+    }
+    {}
+
+    // extract downloads finished in meantime
+    let finished_handle_iter =
+        download_handles.extract_if(.., |handle| handle.is_finished());
+    let mut _download_results =
+        Vec::with_capacity(finished_handle_iter.size_hint().1.unwrap_or_default());
+    for finished_handle in finished_handle_iter {
+        _download_results.push(finished_handle.await);
     }
 
-    let mut download_results = Vec::new();
-    let mut new_download_handles = Vec::new();
-    for handle in download_handles {
-        if handle.is_finished() {
-            download_results.push(handle.await);
-        } else {
-            new_download_handles.push(handle);
-        }
-    }
-    for result in download_results {
-        if let Ok(Ok(mut new_handles)) = result {
-            unzip_handles.append(&mut new_handles);
-        } else {
-            for dh in new_download_handles {
-                if let Ok(Ok(handles)) = dh.await {
-                    for uh in handles {
-                        let _ = uh.await;
-                    }
-                }
-            }
-            for uh in unzip_handles {
-                let _ = uh.await;
-            }
-            let _ = delete_handle.await;
-            result??;
-            // unreachable
-            return Ok(None);
+    // extract unzips finished in meantime
+    let finished_unzip_handles: Option<Vec<_>> = unzip_handles
+        .try_lock()
+        .map(|mut guard| {
+            guard
+                .extract_if(.., |handle| handle.is_finished())
+                .collect()
+        })
+        .ok();
+    if let Some(finished_unzip_handles) = finished_unzip_handles {
+        unzip_results.reserve(finished_unzip_handles.len());
+        for finished_handle in finished_unzip_handles.into_iter() {
+            unzip_results.push(finished_handle.await?);
         }
     }
 
-    while !needs_download.is_empty()
-        && new_download_handles.len() < NUM_PARALLEL_DOWNLOADS
-    {
-        new_download_handles.push(tokio::spawn(sync::download_batch(
+    // spawn new downloads if capacity is there
+    let dir = profile.directory();
+    let unzip_handles2 = unzip_handles.clone();
+    let spawn_unzip = move |bytes: BytesMut, rfile: RemoteFileInfo| {
+        let dir = dir.clone();
+        let new_task = tokio::spawn(sync::unzip_file(bytes, rfile, dir));
+        let mut unzip_handles2 = unzip_handles2.lock().unwrap(); //SYNC LOCK: carefull not to hold this over .await
+        unzip_handles2.push(new_task);
+    };
+
+    while !needs_download.is_empty() && download_handles.len() < NUM_PARALLEL_DOWNLOADS {
+        download_handles.push(tokio::spawn(sync::download_batch(
             profile.download_url(),
             needs_download.pop().unwrap(),
-            profile.directory(),
             tx.clone(),
+            spawn_unzip.clone(),
         )));
     }
 
@@ -250,9 +268,10 @@ async fn sync(
             profile,
             needs_download,
             progress,
-            new_download_handles,
+            download_handles,
             unzip_handles,
             delete_handle,
+            unzip_results,
             rx,
             tx,
         ),

@@ -40,6 +40,7 @@ impl From<RemoteError> for ClientError {
 pub struct RemoteFileInfo {
     pub crc32: u32,
     pub compressed_size: u32,
+    pub uncompressed_size: u32,
     pub compression_method: u16,
     pub file_name: String,
     pub start_offset: u32,
@@ -70,6 +71,7 @@ pub(super) async fn rfile_infos(
     let rfiles = cds.iter().map(|cd| Ok(RemoteFileInfo {
         crc32: cd.fixed.crc_32,
         compressed_size: cd.fixed.compressed_size,
+        uncompressed_size: cd.fixed.uncompressed_size,
         compression_method: cd.fixed.compression_method,
         file_name: String::from_utf8(cd.file_name.clone()).map_err(|_| RemoteError::InvalidFileName)?,
         start_offset: cd.fixed.relative_offset_of_local_header,

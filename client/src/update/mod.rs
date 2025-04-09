@@ -29,7 +29,10 @@ pub(crate) enum Progress {
     /// If the consumer sees ReadyToSync a download is necessary, but they can
     /// implement logic to avoid any download
     ReadyToSync(Profile),
-    Syncing(ProgressDetails),
+    Syncing {
+        download: ProgressDetails,
+        unzip: ProgressDetails,
+    },
     Successful(Profile),
     Errored(ClientError),
     Offline,
@@ -43,6 +46,7 @@ pub(super) enum State {
     Sync(
         Profile,
         Vec<Vec<RemoteFileInfo>>,
+        ProgressDetails,
         ProgressDetails,
         Vec<JoinHandle<DownloadResult>>,
         Arc<Mutex<Vec<JoinHandle<UnzipResult>>>>,
@@ -64,8 +68,8 @@ impl State {
         let res = match self {
             State::ToBeEvaluated(p) => evaluate(p).await,
             State::InitializeSync(p, c) => initialize_sync(p, c).await,
-            State::Sync(p, nd, dowp, dowh, uh, delh, ur, rx, tx) => {
-                sync(p, nd, dowp, (dowh, uh, delh), ur, (rx, tx)).await
+            State::Sync(p, nd, dowp, unzp, dowh, uh, delh, ur, rx, tx) => {
+                sync(p, nd, (dowp, unzp), (dowh, uh, delh), ur, (rx, tx)).await
             },
             State::Finished => Ok(None),
         };
@@ -153,13 +157,18 @@ async fn initialize_sync(
     profile: Profile,
     compared: Compared,
 ) -> Result<Option<(Progress, State)>, ClientError> {
-    let progress = ProgressDetails::new(compared.needs_download_bytes);
+    let progress_download = ProgressDetails::new(compared.needs_download_bytes);
+    let progress_unzip = ProgressDetails::new(compared.needs_unzip_bytes);
     Ok(Some((
-        Progress::Syncing(progress.clone()),
+        Progress::Syncing {
+            download: progress_download.clone(),
+            unzip: progress_unzip.clone(),
+        },
         State::Sync(
             profile,
             compared.needs_download,
-            progress,
+            progress_download,
+            progress_unzip,
             Vec::new(),
             Arc::new(Mutex::new(Vec::new())),
             tokio::spawn(sync::remove_files(compared.needs_deletion)),
@@ -176,7 +185,7 @@ async fn initialize_sync(
 async fn sync(
     mut profile: Profile,
     mut needs_download: Vec<Vec<RemoteFileInfo>>,
-    mut progress: ProgressDetails,
+    (mut progress_download, mut progress_unzip): (ProgressDetails, ProgressDetails),
     (mut download_handles, mut unzip_handles, delete_handle): (
         Vec<JoinHandle<DownloadResult>>,
         Arc<Mutex<Vec<JoinHandle<UnzipResult>>>>,
@@ -269,7 +278,8 @@ async fn sync(
 
     let download_count = dc.swap(0, Ordering::SeqCst);
     let unzip_count = zc.swap(0, Ordering::SeqCst);
-    progress.add_chunk(download_count as u64); //we used usize, so be available on most platforms
+    progress_download.add_chunk(download_count as u64); //we used usize, so be available on most platforms
+    progress_unzip.add_chunk(unzip_count as u64);
 
     if download_count > 0 || unzip_count > 0 {
         let d_len = download_handles.len();
@@ -287,11 +297,15 @@ async fn sync(
     }
 
     Ok(Some((
-        Progress::Syncing(progress.clone()),
+        Progress::Syncing {
+            download: progress_download.clone(),
+            unzip: progress_unzip.clone(),
+        },
         State::Sync(
             profile,
             needs_download,
-            progress,
+            progress_download,
+            progress_unzip,
             download_handles,
             unzip_handles,
             delete_handle,

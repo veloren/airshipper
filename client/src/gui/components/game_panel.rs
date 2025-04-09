@@ -230,7 +230,7 @@ impl GamePanelComponent {
                         Some(GamePanelState::Offline(active_profile.installed())),
                         None,
                     ),
-                    Some(Progress::Syncing(_)) | Some(Progress::Evaluating) => {
+                    Some(Progress::Syncing { .. }) | Some(Progress::Evaluating) => {
                         if let GamePanelState::Updating { astate, btnstate } = &self.state
                         {
                             let state = {
@@ -385,21 +385,33 @@ impl GamePanelComponent {
             {
                 // When the game is downloading, the download progress bar and related
                 // stats replace the Launch / Update button
-                let (percent, total, downloaded, bytes_per_sec, remaining) = match self
-                    .download_progress
-                    .as_ref()
-                    .unwrap_or(&Progress::Evaluating)
-                {
-                    Progress::Syncing(progress_data) => (
-                        progress_data.percent_complete() as f32,
-                        progress_data.total_bytes(),
-                        progress_data.processed_bytes(),
-                        progress_data.bytes_per_sec(),
-                        progress_data.time_remaining(),
-                    ),
-                    Progress::Successful(_) => (100.0, 0, 0, 0, Duration::from_secs(0)),
-                    _ => (0.0, 0, 0, 0, Duration::from_secs(0)),
-                };
+                let (step, percent, total, downloaded, bytes_per_sec, remaining) =
+                    match self
+                        .download_progress
+                        .as_ref()
+                        .unwrap_or(&Progress::Evaluating)
+                    {
+                        Progress::Syncing { download, unzip } => {
+                            let (step, progress) =
+                                match (download.is_finished(), unzip.is_finished()) {
+                                    (false, _) => ("Downloading", &download),
+                                    (true, false) => ("Unzipping", &unzip),
+                                    (true, true) => ("Finalizing", &unzip),
+                                };
+                            (
+                                step,
+                                progress.percent_complete() as f32,
+                                progress.total_bytes(),
+                                progress.processed_bytes(),
+                                progress.bytes_per_sec(),
+                                progress.time_remaining(),
+                            )
+                        },
+                        Progress::Successful(_) => {
+                            ("Successful", 100.0, 0, 0, 0, Duration::from_secs(0))
+                        },
+                        _ => ("Unknown", 0.0, 0, 0, 0, Duration::from_secs(0)),
+                    };
 
                 let download_rate = bytes_per_sec as f32 / 1_000_000.0;
 
@@ -445,12 +457,6 @@ impl GamePanelComponent {
                                 .width(Length::Shrink),
                         );
                 }
-
-                let step = if total == downloaded {
-                    "Finalizing"
-                } else {
-                    "Downloading"
-                };
 
                 container(
                     column![]

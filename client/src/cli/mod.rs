@@ -150,18 +150,18 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
                     }
                 }
             },
-            Progress::Syncing(progress_data) => {
-                let step =
-                    if progress_data.total_bytes() == progress_data.processed_bytes() {
-                        "Finalizing"
-                    } else {
-                        "Downloading"
-                    };
-                progress_bar.set_position(progress_data.percent_complete());
+            Progress::Syncing { download, unzip } => {
+                let (step, progress) = match (download.is_finished(), unzip.is_finished())
+                {
+                    (false, _) => ("Downloading", &download),
+                    (true, false) => ("Unzipping", &unzip),
+                    (true, true) => ("Finalizing", &unzip),
+                };
+                progress_bar.set_position(progress.percent_complete());
                 progress_bar.set_message(format!(
                     "{} / {} ({step})",
-                    pretty_bytes(progress_data.processed_bytes()),
-                    pretty_bytes(progress_data.total_bytes()),
+                    pretty_bytes(progress.processed_bytes()),
+                    pretty_bytes(progress.total_bytes()),
                 ));
             },
             Progress::Successful(new_profile) => {

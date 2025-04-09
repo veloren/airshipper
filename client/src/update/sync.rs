@@ -87,6 +87,10 @@ impl ProgressDetails {
         self.processed_bytes
     }
 
+    pub fn is_finished(&self) -> bool {
+        self.processed_bytes >= self.total_bytes
+    }
+
     pub fn bytes_per_sec(&self) -> u64 {
         self.bytes_per_sec
     }

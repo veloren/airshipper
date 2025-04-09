@@ -7,6 +7,7 @@ pub(super) struct Compared {
     pub needs_download: Vec<Vec<RemoteFileInfo>>,
     pub needs_deletion: Vec<LocalFileInfo>,
     pub needs_download_bytes: u64,
+    pub needs_unzip_bytes: u64,
 }
 
 pub(super) fn build_compared(
@@ -90,9 +91,20 @@ pub(super) fn build_compared(
         })
         .sum();
 
+    let needs_unzip_bytes = needs_download
+        .iter()
+        .map(|batch| {
+            batch
+                .iter()
+                .map(|f| f.uncompressed_size as u64)
+                .sum::<u64>()
+        })
+        .sum();
+
     Compared {
         needs_download,
         needs_deletion,
         needs_download_bytes,
+        needs_unzip_bytes,
     }
 }

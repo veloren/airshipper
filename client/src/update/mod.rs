@@ -1,6 +1,10 @@
 use std::{
     convert::TryFrom,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
 };
 
 use crate::{error::ClientError, profiles::Profile};
@@ -9,10 +13,7 @@ use compare::Compared;
 use futures_util::stream::Stream;
 use iced::futures;
 use sync::{DeleteResult, DownloadResult, ProgressDetails, UnzipResult};
-use tokio::{
-    sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel},
-    task::JoinHandle,
-};
+use tokio::task::JoinHandle;
 use zip_core::structs::CompressionMethod;
 
 mod compare;
@@ -47,8 +48,8 @@ pub(super) enum State {
         Arc<Mutex<Vec<JoinHandle<UnzipResult>>>>,
         JoinHandle<DeleteResult>,
         Vec<UnzipResult>,
-        UnboundedReceiver<u64>,
-        UnboundedSender<u64>,
+        Arc<AtomicUsize>,
+        Arc<AtomicUsize>,
     ),
     Finished,
 }
@@ -153,7 +154,6 @@ async fn initialize_sync(
     compared: Compared,
 ) -> Result<Option<(Progress, State)>, ClientError> {
     let progress = ProgressDetails::new(compared.needs_download_bytes);
-    let (tx, rx) = unbounded_channel::<u64>();
     Ok(Some((
         Progress::Syncing(progress.clone()),
         State::Sync(
@@ -164,8 +164,8 @@ async fn initialize_sync(
             Arc::new(Mutex::new(Vec::new())),
             tokio::spawn(sync::remove_files(compared.needs_deletion)),
             Vec::new(),
-            rx,
-            tx,
+            Arc::new(AtomicUsize::new(0)),
+            Arc::new(AtomicUsize::new(0)),
         ),
     )))
 }
@@ -183,7 +183,7 @@ async fn sync(
         JoinHandle<DeleteResult>,
     ),
     mut unzip_results: Vec<UnzipResult>,
-    (mut rx, tx): (UnboundedReceiver<u64>, UnboundedSender<u64>),
+    (dc, zc): (Arc<AtomicUsize>, Arc<AtomicUsize>),
 ) -> Result<Option<(Progress, State)>, ClientError> {
     const NUM_PARALLEL_DOWNLOADS: usize = 15;
     if needs_download.is_empty() && download_handles.is_empty() {
@@ -210,17 +210,21 @@ async fn sync(
                 }
                 return Ok(Some((Progress::Successful(profile), State::Finished)));
             }
+        } else {
+            tracing::debug!("Download complete. waiting for Unzip to complete.");
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
     {}
 
-    // extract downloads finished in meantime
+    // extract downloads finished in meantime, downloads return now value, as they trigger
+    // unzips during runtime
     let finished_handle_iter =
         download_handles.extract_if(.., |handle| handle.is_finished());
-    let mut _download_results =
-        Vec::with_capacity(finished_handle_iter.size_hint().1.unwrap_or_default());
-    for finished_handle in finished_handle_iter {
-        _download_results.push(finished_handle.await);
+    // use iter, otherwith it has no effect
+    let cnt = finished_handle_iter.count();
+    if cnt > 0 {
+        tracing::trace!(?cnt, "downloads finished");
     }
 
     // extract unzips finished in meantime
@@ -242,24 +246,44 @@ async fn sync(
     // spawn new downloads if capacity is there
     let dir = profile.directory();
     let unzip_handles2 = unzip_handles.clone();
+    let zc2 = zc.clone();
     let spawn_unzip = move |bytes: BytesMut, rfile: RemoteFileInfo| {
         let dir = dir.clone();
-        let new_task = tokio::spawn(sync::unzip_file(bytes, rfile, dir));
+        let zc2 = zc2.clone();
+        let name = &rfile.file_name;
+        tracing::trace!(?name, "triggering unzip");
+        let new_task = tokio::spawn(sync::unzip_file(bytes, rfile, dir, zc2));
         let mut unzip_handles2 = unzip_handles2.lock().unwrap(); //SYNC LOCK: carefull not to hold this over .await
         unzip_handles2.push(new_task);
     };
 
     while !needs_download.is_empty() && download_handles.len() < NUM_PARALLEL_DOWNLOADS {
+        tracing::trace!("triggering download");
         download_handles.push(tokio::spawn(sync::download_batch(
             profile.download_url(),
             needs_download.pop().unwrap(),
-            tx.clone(),
             spawn_unzip.clone(),
+            dc.clone(),
         )));
     }
 
-    for _ in 0..rx.len() {
-        progress.add_chunk(rx.recv().await.unwrap_or_default());
+    let download_count = dc.swap(0, Ordering::SeqCst);
+    let unzip_count = zc.swap(0, Ordering::SeqCst);
+    progress.add_chunk(download_count as u64); //we used usize, so be available on most platforms
+
+    if download_count > 0 || unzip_count > 0 {
+        let d_len = download_handles.len();
+        let u_len = unzip_handles
+            .try_lock()
+            .map(|l| l.len())
+            .unwrap_or_default();
+        tracing::trace!(
+            ?download_count,
+            ?unzip_count,
+            ?d_len,
+            ?u_len,
+            "status changed"
+        );
     }
 
     Ok(Some((
@@ -272,8 +296,8 @@ async fn sync(
             unzip_handles,
             delete_handle,
             unzip_results,
-            rx,
-            tx,
+            dc,
+            zc,
         ),
     )))
 }

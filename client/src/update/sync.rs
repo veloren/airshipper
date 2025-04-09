@@ -3,9 +3,18 @@ use flate2::read::DeflateDecoder;
 use reqwest::{StatusCode, header::RANGE};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::{convert::TryFrom, io::Read, path::PathBuf, time::Duration};
+use std::{
+    convert::TryFrom,
+    io::Read,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 use thiserror::Error;
-use tokio::{io::AsyncWriteExt, sync::mpsc::UnboundedSender, time::Instant};
+use tokio::{io::AsyncWriteExt, time::Instant};
 use zip_core::{
     Signature,
     raw::{LocalFileHeader, parse::Parse},
@@ -146,8 +155,8 @@ pub(super) type DownloadResult = Result<(), SyncError>;
 pub(super) async fn download_batch<F>(
     url: String,
     mut batch: Vec<RemoteFileInfo>,
-    tx: UnboundedSender<u64>,
     f: F,
+    bytes_downloaded: Arc<AtomicUsize>,
 ) -> DownloadResult
 where
     F: Fn(BytesMut, RemoteFileInfo),
@@ -184,7 +193,7 @@ where
     let mut next_rfile = batch.pop().unwrap();
 
     while let Some(chunk) = response.chunk().await? {
-        tx.send(chunk.len() as u64)?;
+        bytes_downloaded.fetch_add(chunk.len(), Ordering::SeqCst);
         storage.put(chunk);
 
         loop {
@@ -239,6 +248,7 @@ pub(super) async fn unzip_file(
     mut compressed: BytesMut,
     rfile: RemoteFileInfo,
     dir: PathBuf,
+    bytes_unzipped: Arc<AtomicUsize>,
 ) -> UnzipResult {
     if compressed.len() != rfile.compressed_size as usize {
         // something's off
@@ -274,6 +284,8 @@ pub(super) async fn unzip_file(
 
     let mut file = file.await??;
     file.write_all_buf(&mut file_data).await?;
+
+    bytes_unzipped.fetch_add(file_data.len(), Ordering::SeqCst);
 
     #[cfg(unix)]
     {

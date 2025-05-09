@@ -113,28 +113,20 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
     use crate::update::{Progress, update};
     use indicatif::{ProgressBar, ProgressStyle};
 
-    let progress_bar = ProgressBar::new(0).with_style(
+    let progress_bar = ProgressBar::new(100).with_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.green/white}] {msg} [{eta}]")
             .unwrap()
             .progress_chars("=>-"),
     );
-    progress_bar.set_length(100);
+    progress_bar.set_message("Evaluating Update");
+
+    tracing::debug!("start updating");
 
     let mut stream = update(airshipper.active_profile.clone()).boxed();
 
     while let Some(progress) = stream.next().await {
         match progress {
-            Progress::Evaluating => {
-                let next = if progress_bar.position() == 33 {
-                    66
-                } else {
-                    33
-                };
-
-                progress_bar.set_message("Evaluating Update");
-                progress_bar.set_position(next);
-            },
             Progress::ReadyToSync(new_profile) => {
                 tracing::debug!("Updating profile");
                 airshipper.active_profile = new_profile;
@@ -150,7 +142,7 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
                     }
                 }
             },
-            Progress::Syncing { download, unzip } => {
+            Progress::DownloadExtracting { download, unzip } => {
                 let (step, progress) = match (download.is_finished(), unzip.is_finished())
                 {
                     (false, _) => ("Downloading", &download),
@@ -164,12 +156,22 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
                     pretty_bytes(progress.total_bytes()),
                 ));
             },
+            Progress::Deleting(delete) => {
+                progress_bar.set_position(delete.percent_complete());
+                progress_bar.set_message(format!(
+                    "{} / {} (Deleting)",
+                    pretty_bytes(delete.processed_bytes()),
+                    pretty_bytes(delete.total_bytes()),
+                ));
+            },
             Progress::Successful(new_profile) => {
                 tracing::debug!("Updating profile");
                 airshipper.active_profile = new_profile;
                 return Ok(());
             },
-            Progress::Errored(e) => return Err(ClientError::Custom(e.to_string())),
+            Progress::Errored(e) => {
+                return Err(ClientError::Custom(e.to_string()));
+            },
             Progress::Offline => {
                 return Err(ClientError::Custom("No internet connection".to_string()));
             },

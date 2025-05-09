@@ -38,10 +38,10 @@ use tokio::sync::Mutex;
 use crate::gui::style::container::ContainerStyle;
 use tracing::debug;
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub enum GamePanelMessage {
     ProcessUpdate(ProcessUpdate),
-    DownloadProgress(Option<Progress>),
+    DownloadProgress(Arc<Option<Progress>>),
     PlayPressed,
     ServerBrowserServerChanged(Option<String>),
     StartUpdate,
@@ -66,10 +66,10 @@ pub enum GamePanelState {
     Retry,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct GamePanelComponent {
     state: GamePanelState,
-    download_progress: Option<Progress>,
+    download_progress: Arc<Option<Progress>>,
     selected_server_browser_address: Option<String>,
 }
 
@@ -89,7 +89,7 @@ impl Default for GamePanelComponent {
     fn default() -> Self {
         Self {
             state: GamePanelState::ReadyToPlay,
-            download_progress: None,
+            download_progress: None.into(),
             selected_server_browser_address: None,
         }
     }
@@ -144,7 +144,7 @@ impl GamePanelComponent {
                 },
                 |progress| {
                     DefaultViewMessage::GamePanel(GamePanelMessage::DownloadProgress(
-                        progress,
+                        progress.into(),
                     ))
                 },
             )),
@@ -212,25 +212,27 @@ impl GamePanelComponent {
                 Self::trigger_next_state(state, astate, DownloadButtonState::Checking)
             },
             GamePanelMessage::DownloadProgress(progress) => {
-                self.download_progress = progress.clone();
-
-                match progress {
-                    Some(Progress::Errored(err)) => {
-                        tracing::error!("Download failed with: {}", err);
+                let next = match &*progress {
+                    Some(Progress::Errored(e)) => {
+                        tracing::error!("Download failed with: {e}");
                         (Some(GamePanelState::Retry), None)
                     },
-                    Some(Progress::Successful(profile)) => (
-                        Some(GamePanelState::ReadyToPlay),
-                        Some(Command::perform(
-                            async { Action::UpdateProfile(profile) },
-                            DefaultViewMessage::Action,
-                        )),
-                    ),
+                    Some(Progress::Successful(profile)) => {
+                        let profile = profile.clone();
+                        (
+                            Some(GamePanelState::ReadyToPlay),
+                            Some(Command::perform(
+                                async { Action::UpdateProfile(profile) },
+                                DefaultViewMessage::Action,
+                            )),
+                        )
+                    },
                     Some(Progress::Offline) => (
                         Some(GamePanelState::Offline(active_profile.installed())),
                         None,
                     ),
-                    Some(Progress::Syncing { .. }) | Some(Progress::Evaluating) => {
+                    Some(Progress::DownloadExtracting { .. })
+                    | Some(Progress::Deleting(_)) => {
                         if let GamePanelState::Updating { astate, btnstate } = &self.state
                         {
                             let state = {
@@ -255,6 +257,7 @@ impl GamePanelComponent {
                     },
                     Some(Progress::ReadyToSync(profile)) => {
                         tracing::debug!("Need to confirm the update");
+                        let profile = profile.clone();
                         (
                             if let GamePanelState::Updating { astate, .. } = &self.state {
                                 Some(GamePanelState::Updating {
@@ -271,7 +274,9 @@ impl GamePanelComponent {
                         )
                     },
                     None => (None, None),
-                }
+                };
+                self.download_progress = progress;
+                next
             },
             // TODO: Move this out of GamePanelComponent? This code handles redirecting
             // voxygen output to Airshipper's log output
@@ -386,12 +391,8 @@ impl GamePanelComponent {
                 // When the game is downloading, the download progress bar and related
                 // stats replace the Launch / Update button
                 let (step, percent, total, downloaded, bytes_per_sec, remaining) =
-                    match self
-                        .download_progress
-                        .as_ref()
-                        .unwrap_or(&Progress::Evaluating)
-                    {
-                        Progress::Syncing { download, unzip } => {
+                    match &*self.download_progress {
+                        Some(Progress::DownloadExtracting { download, unzip }) => {
                             let (step, progress) =
                                 match (download.is_finished(), unzip.is_finished()) {
                                     (false, _) => ("Downloading", &download),
@@ -407,7 +408,15 @@ impl GamePanelComponent {
                                 progress.time_remaining(),
                             )
                         },
-                        Progress::Successful(_) => {
+                        Some(Progress::Deleting(delete)) => (
+                            "Deleting",
+                            delete.percent_complete() as f32,
+                            delete.total_bytes(),
+                            delete.processed_bytes(),
+                            delete.bytes_per_sec(),
+                            delete.time_remaining(),
+                        ),
+                        Some(Progress::Successful(_)) => {
                             ("Successful", 100.0, 0, 0, 0, Duration::from_secs(0))
                         },
                         _ => ("Unknown", 0.0, 0, 0, 0, Duration::from_secs(0)),

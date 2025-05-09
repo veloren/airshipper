@@ -1,4 +1,5 @@
-use crate::{channels::Channel, consts, fs, update::RemoteFileInfo};
+use crate::{channels::Channel, consts, fs};
+use remozipsy::RemoteFileInfo;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,

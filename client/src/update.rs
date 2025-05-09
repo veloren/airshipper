@@ -8,7 +8,9 @@ use crate::{
 };
 use futures_util::{Stream, stream};
 use remozipsy::{
-    ProgressDetails, Statemachine, reqwest::ReqwestRemoteZip, tokio::TokioLocalStorage,
+    ProgressDetails, Statemachine,
+    reqwest::{ReqwestCachedRemoteZip, ReqwestRemoteZip},
+    tokio::TokioLocalStorage,
 };
 
 #[derive(Debug, Clone)]
@@ -35,7 +37,7 @@ pub(super) enum State {
     ToBeEvaluated(Profile),
     Sync(
         Profile,
-        Statemachine<ReqwestRemoteZip<reqwest::Client>, TokioLocalStorage>,
+        Statemachine<ReqwestCachedRemoteZip<reqwest::Client>, TokioLocalStorage>,
     ),
     /// in case its finished early while evaluating
     Finished,
@@ -81,13 +83,16 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
     let Ok(remote) = ReqwestRemoteZip::with_url(profile.download_url()) else {
         return Some((Progress::Offline, State::Finished));
     };
+    let remote = ReqwestCachedRemoteZip::with_inner(remote, None);
     let local = TokioLocalStorage::new(profile.directory(), vec![]);
     let config = remozipsy::Config::default();
     let statemachine = Statemachine::new(remote.clone(), local, config);
 
     // we are triggering remozipsy ONCE, so we get the result of the evalute phase
     if let Some((pg, statemachine)) = statemachine.progress().await {
-        // TODO: fill caches here
+        if let Some(content) = remote.try_cache_content() {
+            profile.rfiles = content;
+        }
 
         if !matches!(pg, remozipsy::Progress::Successful) {
             return Some((
@@ -105,7 +110,10 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
 // checks if an update is necessary
 async fn sync(
     profile: Profile,
-    statemachine: Statemachine<ReqwestRemoteZip<reqwest::Client>, TokioLocalStorage>,
+    statemachine: Statemachine<
+        ReqwestCachedRemoteZip<reqwest::Client>,
+        TokioLocalStorage,
+    >,
 ) -> Option<(Progress, State)> {
     match statemachine.progress().await {
         Some((p, s)) => Some(match p {

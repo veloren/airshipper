@@ -30,6 +30,9 @@ pub enum ClientError {
     #[error("Failed to parse version.")]
     VersionError,
 
+    #[error("error during update: {0}")]
+    Update(String),
+
     #[error("{0}")]
     Custom(String),
 }

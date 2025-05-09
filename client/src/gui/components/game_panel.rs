@@ -41,7 +41,7 @@ use tracing::debug;
 #[derive(Debug, Clone)]
 pub enum GamePanelMessage {
     ProcessUpdate(ProcessUpdate),
-    DownloadProgress(Arc<Option<Progress>>),
+    DownloadProgress(Option<Progress>),
     PlayPressed,
     ServerBrowserServerChanged(Option<String>),
     StartUpdate,
@@ -69,7 +69,7 @@ pub enum GamePanelState {
 #[derive(Debug, Clone)]
 pub struct GamePanelComponent {
     state: GamePanelState,
-    download_progress: Arc<Option<Progress>>,
+    download_progress: Option<Progress>,
     selected_server_browser_address: Option<String>,
 }
 
@@ -89,7 +89,7 @@ impl Default for GamePanelComponent {
     fn default() -> Self {
         Self {
             state: GamePanelState::ReadyToPlay,
-            download_progress: None.into(),
+            download_progress: None,
             selected_server_browser_address: None,
         }
     }
@@ -128,8 +128,10 @@ impl GamePanelComponent {
                             Some((progress, state)) => {
                                 lstate = state;
                                 last_progress = Some(progress);
-                                if matches!(last_progress, Some(Progress::ReadyToSync(_)))
-                                {
+                                if matches!(
+                                    last_progress,
+                                    Some(Progress::ReadyToSync { .. })
+                                ) {
                                     // wait for user input!
                                     break;
                                 }
@@ -144,7 +146,7 @@ impl GamePanelComponent {
                 },
                 |progress| {
                     DefaultViewMessage::GamePanel(GamePanelMessage::DownloadProgress(
-                        progress.into(),
+                        progress,
                     ))
                 },
             )),
@@ -212,7 +214,7 @@ impl GamePanelComponent {
                 Self::trigger_next_state(state, astate, DownloadButtonState::Checking)
             },
             GamePanelMessage::DownloadProgress(progress) => {
-                let next = match &*progress {
+                let next = match &progress {
                     Some(Progress::Errored(e)) => {
                         tracing::error!("Download failed with: {e}");
                         (Some(GamePanelState::Retry), None)
@@ -255,9 +257,8 @@ impl GamePanelComponent {
                             (None, None)
                         }
                     },
-                    Some(Progress::ReadyToSync(profile)) => {
-                        tracing::debug!("Need to confirm the update");
-                        let profile = profile.clone();
+                    Some(Progress::ReadyToSync { version }) => {
+                        tracing::debug!(?version, "Need to confirm the update");
                         (
                             if let GamePanelState::Updating { astate, .. } = &self.state {
                                 Some(GamePanelState::Updating {
@@ -267,10 +268,7 @@ impl GamePanelComponent {
                             } else {
                                 None
                             },
-                            Some(Command::perform(
-                                async { Action::UpdateProfile(profile) },
-                                DefaultViewMessage::Action,
-                            )),
+                            None,
                         )
                     },
                     None => (None, None),
@@ -391,7 +389,7 @@ impl GamePanelComponent {
                 // When the game is downloading, the download progress bar and related
                 // stats replace the Launch / Update button
                 let (step, percent, total, downloaded, bytes_per_sec, remaining) =
-                    match &*self.download_progress {
+                    match &self.download_progress {
                         Some(Progress::DownloadExtracting { download, unzip }) => {
                             let (step, progress) =
                                 match (download.is_finished(), unzip.is_finished()) {

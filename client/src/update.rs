@@ -3,16 +3,17 @@ use std::time::Duration;
 use crate::{WEB_CLIENT, profiles::Profile};
 use futures_util::{Stream, stream};
 use remozipsy::{
-    FileSystem, ProgressDetails, RemoteZip, Statemachine, reqwest::ReqwestRemoteZip,
-    tokio::TokioLocalStorage,
+    ProgressDetails, Statemachine, reqwest::ReqwestRemoteZip, tokio::TokioLocalStorage,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum Progress {
     Offline,
     /// If the consumer sees ReadyToSync a download is necessary, but they can
     /// implement logic to avoid any download
-    ReadyToSync(Profile),
+    ReadyToSync {
+        version: String,
+    },
     // Status from remozipsy
     DownloadExtracting {
         download: ProgressDetails,
@@ -20,12 +21,7 @@ pub(crate) enum Progress {
     },
     Deleting(ProgressDetails),
     Successful(Profile),
-    Errored(
-        remozipsy::Error<
-            <ReqwestRemoteZip<reqwest::Client> as RemoteZip>::Error,
-            <TokioLocalStorage as FileSystem>::Error,
-        >,
-    ),
+    Errored(String),
 }
 
 #[derive(Debug)]
@@ -34,7 +30,6 @@ pub(super) enum State {
     ToBeEvaluated(Profile),
     Sync(
         Profile,
-        Option<ReqwestRemoteZip<reqwest::Client>>,
         Statemachine<ReqwestRemoteZip<reqwest::Client>, TokioLocalStorage>,
     ),
     /// in case its finished early while evaluating
@@ -47,7 +42,7 @@ pub(crate) fn update(p: Profile) -> impl Stream<Item = Progress> {
 }
 
 async fn version(url: String) -> Result<String, reqwest::Error> {
-    Ok(WEB_CLIENT.get(url).send().await?.text().await?)
+    WEB_CLIENT.get(url).send().await?.text().await
 }
 
 impl State {
@@ -55,9 +50,7 @@ impl State {
         tokio::time::sleep(Duration::from_millis(5)).await;
         match self {
             State::ToBeEvaluated(profile) => evaluate(profile).await,
-            State::Sync(profile, remote, statemachine) => {
-                sync(profile, remote, statemachine).await
-            },
+            State::Sync(profile, statemachine) => sync(profile, statemachine).await,
             State::Finished => None,
         }
     }
@@ -74,46 +67,54 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
 
     if !versions_match {
         tracing::info!("Versions do not match. Fetching remote file infos...");
-        profile.version = Some(remote_version);
-
-        let Ok(remote) = ReqwestRemoteZip::with_url(profile.download_url()) else {
-            return Some((Progress::Offline, State::Finished));
-        };
-        let local = TokioLocalStorage::new(profile.directory(), vec![]);
-        let config = remozipsy::Config::default();
-        let statemachine = Statemachine::new(remote.clone(), local, config);
-
-        Some((
-            Progress::ReadyToSync(profile.clone()),
-            State::Sync(profile, Some(remote), statemachine),
-        ))
     } else {
-        Some((Progress::Successful(profile), State::Finished))
+        tracing::debug!("Versions do match. Verifying file hashes");
     }
+
+    profile.version = Some(remote_version.clone());
+
+    let Ok(remote) = ReqwestRemoteZip::with_url(profile.download_url()) else {
+        return Some((Progress::Offline, State::Finished));
+    };
+    let local = TokioLocalStorage::new(profile.directory(), vec![]);
+    let config = remozipsy::Config::default();
+    let statemachine = Statemachine::new(remote.clone(), local, config);
+
+    // we are triggering remozipsy ONCE, so we get the result of the evalute phase
+    if let Some((pg, statemachine)) = statemachine.progress().await {
+        // TODO: fill caches here
+
+        if !matches!(pg, remozipsy::Progress::Successful) {
+            return Some((
+                Progress::ReadyToSync {
+                    version: remote_version,
+                },
+                State::Sync(profile, statemachine),
+            ));
+        }
+    };
+
+    Some((Progress::Successful(profile), State::Finished))
 }
 
 // checks if an update is necessary
 async fn sync(
     profile: Profile,
-    mut remote: Option<ReqwestRemoteZip<reqwest::Client>>,
     statemachine: Statemachine<ReqwestRemoteZip<reqwest::Client>, TokioLocalStorage>,
 ) -> Option<(Progress, State)> {
     statemachine.progress().await.map(|(p, s)| match p {
-        remozipsy::Progress::DownloadExtracting { download, unzip } => {
-            if let Some(_remote) = remote.take() {
-                //profile.rfiles = remote
-            };
-            (
-                Progress::DownloadExtracting { download, unzip },
-                State::Sync(profile, None, s),
-            )
-        },
+        remozipsy::Progress::DownloadExtracting { download, unzip } => (
+            Progress::DownloadExtracting { download, unzip },
+            State::Sync(profile, s),
+        ),
         remozipsy::Progress::Deleting(deleting) => {
-            (Progress::Deleting(deleting), State::Sync(profile, None, s))
+            (Progress::Deleting(deleting), State::Sync(profile, s))
         },
         remozipsy::Progress::Successful => {
             (Progress::Successful(profile.clone()), State::Finished)
         },
-        remozipsy::Progress::Errored(e) => (Progress::Errored(e), State::Finished),
+        remozipsy::Progress::Errored(e) => {
+            (Progress::Errored(e.to_string()), State::Finished)
+        },
     })
 }

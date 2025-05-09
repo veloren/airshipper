@@ -127,11 +127,8 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
 
     while let Some(progress) = stream.next().await {
         match progress {
-            Progress::ReadyToSync(new_profile) => {
-                tracing::debug!("Updating profile");
-                airshipper.active_profile = new_profile;
-                // Save state
-                airshipper.save_mut().await?;
+            Progress::ReadyToSync { version } => {
+                tracing::debug!(?version, "Updating profile");
 
                 if !do_not_ask {
                     tracing::info!("Update found, do you want to update? [Y/n]");
@@ -167,10 +164,12 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
             Progress::Successful(new_profile) => {
                 tracing::debug!("Updating profile");
                 airshipper.active_profile = new_profile;
+                // Save state
+                airshipper.save_mut().await?;
                 return Ok(());
             },
             Progress::Errored(e) => {
-                return Err(ClientError::Custom(e.to_string()));
+                return Err(ClientError::Update(e));
             },
             Progress::Offline => {
                 return Err(ClientError::Custom("No internet connection".to_string()));

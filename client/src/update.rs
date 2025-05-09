@@ -1,6 +1,11 @@
-use std::time::Duration;
+use std::{os::unix::fs::PermissionsExt, time::Duration};
 
-use crate::{WEB_CLIENT, profiles::Profile};
+use crate::{
+    WEB_CLIENT,
+    consts::{SERVER_CLI_FILE, VOXYGEN_FILE},
+    nix,
+    profiles::Profile,
+};
 use futures_util::{Stream, stream};
 use remozipsy::{
     ProgressDetails, Statemachine, reqwest::ReqwestRemoteZip, tokio::TokioLocalStorage,
@@ -102,19 +107,60 @@ async fn sync(
     profile: Profile,
     statemachine: Statemachine<ReqwestRemoteZip<reqwest::Client>, TokioLocalStorage>,
 ) -> Option<(Progress, State)> {
-    statemachine.progress().await.map(|(p, s)| match p {
-        remozipsy::Progress::DownloadExtracting { download, unzip } => (
-            Progress::DownloadExtracting { download, unzip },
-            State::Sync(profile, s),
-        ),
-        remozipsy::Progress::Deleting(deleting) => {
-            (Progress::Deleting(deleting), State::Sync(profile, s))
-        },
-        remozipsy::Progress::Successful => {
-            (Progress::Successful(profile.clone()), State::Finished)
-        },
-        remozipsy::Progress::Errored(e) => {
-            (Progress::Errored(e.to_string()), State::Finished)
-        },
-    })
+    match statemachine.progress().await {
+        Some((p, s)) => Some(match p {
+            remozipsy::Progress::DownloadExtracting { download, unzip } => (
+                Progress::DownloadExtracting { download, unzip },
+                State::Sync(profile, s),
+            ),
+            remozipsy::Progress::Deleting(deleting) => {
+                (Progress::Deleting(deleting), State::Sync(profile, s))
+            },
+            remozipsy::Progress::Successful => {
+                if let Err(e) = final_cleanup(profile.clone()).await {
+                    (Progress::Errored(e.to_string()), State::Finished)
+                } else {
+                    (Progress::Successful(profile.clone()), State::Finished)
+                }
+            },
+            remozipsy::Progress::Errored(e) => {
+                (Progress::Errored(e.to_string()), State::Finished)
+            },
+        }),
+        None => None,
+    }
+}
+
+// permissions, update params
+async fn final_cleanup(profile: Profile) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let profile_directory = profile.directory();
+
+        // Patch executable files if we are on NixOS
+        if nix::is_nixos().map_err(|e| e.to_string())? {
+            nix::patch(&profile_directory, VOXYGEN_FILE).map_err(|e| e.to_string())?;
+            nix::patch(&profile_directory, SERVER_CLI_FILE).map_err(|e| e.to_string())?;
+        } else {
+            let p = |path| async move {
+                let meta = tokio::fs::metadata(&path)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let mut perm = meta.permissions();
+                perm.set_mode(0o755);
+                tokio::fs::set_permissions(&path, perm)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok::<(), String>(())
+            };
+
+            tracing::info!("patching unix files");
+            let voxygen_file = profile_directory.join(VOXYGEN_FILE);
+            p(voxygen_file).await?;
+            let server_cli_file = profile_directory.join(SERVER_CLI_FILE);
+            p(server_cli_file).await?;
+        }
+    }
+
+    Ok(())
 }

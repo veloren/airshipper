@@ -12,6 +12,7 @@ use remozipsy::{
     reqwest::{ReqwestCachedRemoteZip, ReqwestRemoteZip},
     tokio::TokioLocalStorage,
 };
+use ron::ser::{PrettyConfig, to_string_pretty};
 
 #[derive(Debug, Clone)]
 pub(crate) enum Progress {
@@ -80,18 +81,40 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
 
     profile.version = Some(remote_version.clone());
 
+    let cache_file_parent = crate::fs::get_cache_path().join("remotezip");
+    let cache_file = cache_file_parent.join(format!("{remote_version}.ron"));
+    let mut cache = None;
+    if tokio::fs::create_dir_all(cache_file_parent).await.is_ok() {
+        if let Ok(file_content) = tokio::fs::read_to_string(&cache_file).await {
+            if let Ok(content) = ron::from_str(&file_content) {
+                cache = Some(content);
+            }
+        }
+    };
+    let need_save_cache = cache.is_none();
+
     let Ok(remote) = ReqwestRemoteZip::with_url(profile.download_url()) else {
         return Some((Progress::Offline, State::Finished));
     };
-    let remote = ReqwestCachedRemoteZip::with_inner(remote, None);
-    let local = TokioLocalStorage::new(profile.directory(), vec![]);
+    let remote = ReqwestCachedRemoteZip::with_inner(remote, cache);
+    const KEEP_PATHS: &[&str] = &["userdata/", "screenshots/", "maps/", "veloren.zip"];
+    let ignore = KEEP_PATHS.iter().map(|p| p.to_string()).collect();
+    let local = TokioLocalStorage::new(profile.directory(), ignore);
     let config = remozipsy::Config::default();
     let statemachine = Statemachine::new(remote.clone(), local, config);
 
     // we are triggering remozipsy ONCE, so we get the result of the evalute phase
     if let Some((pg, statemachine)) = statemachine.progress().await {
-        if let Some(content) = remote.try_cache_content() {
-            profile.rfiles = content;
+        if need_save_cache {
+            if let Some(content) = remote.try_cache_content() {
+                if let Ok(ron_string) =
+                    to_string_pretty(&content, PrettyConfig::default())
+                {
+                    if let Err(e) = tokio::fs::write(cache_file, ron_string).await {
+                        tracing::warn!(?e, "Could not cache the remote zip");
+                    };
+                }
+            }
         }
 
         if !matches!(pg, remozipsy::Progress::Successful) {

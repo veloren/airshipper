@@ -1,5 +1,4 @@
 use crate::{channels::Channel, consts, fs};
-use remozipsy::RemoteFileInfo;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -27,8 +26,6 @@ pub struct Profile {
     #[serde(rename = "directory")]
     _directory: PathBuf,
     pub version: Option<String>,
-    #[serde(default)]
-    pub rfiles: Vec<RemoteFileInfo>,
     pub wgpu_backend: WgpuBackend,
     pub log_level: LogLevel,
     pub env_vars: String,
@@ -158,7 +155,6 @@ impl Profile {
             server,
             channel,
             version: None,
-            rfiles: Vec::new(),
             wgpu_backend: WgpuBackend::Auto,
             log_level: LogLevel::Default,
             env_vars: String::new(),

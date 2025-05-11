@@ -79,7 +79,7 @@ serde = "1.0.116"
 semver = "1"
 rss = "2.0.7"
 ron = "0.8.1"
-remozipsy = { path = "../../../remozipsy", version = "0.0.3" }
+remozipsy = { version = "0.0.4" }
 crc32fast = "1.4.2"
 flate2 = "1.0"
 url = "2.2.2"

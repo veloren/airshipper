@@ -4131,7 +4131,9 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 
 [[package]]
 name = "remozipsy"
-version = "0.0.3"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b530c9f0783a3863725ac4f8d1031f110f862471fc8da6f844210dd87c56b8d"
 dependencies = [
  "bytes",
  "crc32fast",

@@ -9,7 +9,7 @@ default-run = "airshipper"
 exclude = ["assets/fonts/GoNotoCurrent.ttf"]
 
 license = "GPL-3.0"
-homepage = "https://www.veloren.net"
+homepage = "https://veloren.net"
 repository = "https://gitlab.com/veloren/airshipper"
 
 [package.metadata.nix]

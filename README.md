@@ -1,6 +1,9 @@
 # Airshipper
 
-[![GitHub release)](https://img.shields.io/github/v/release/veloren/airshipper?include_prereleases)](https://github.com/veloren/Airshipper/releases) [![License](https://img.shields.io/github/license/veloren/airshipper?color=blue)](https://github.com/veloren/Airshipper/blob/master/LICENSE) [![Discord](https://img.shields.io/discord/449602562165833758?label=discord)](https://discord.gg/rvbW3Z4) [![AUR version](https://img.shields.io/aur/version/airshipper?label=AUR)](https://aur.archlinux.org/packages/airshipper/)
+[![Discord](https://img.shields.io/discord/449602562165833758?logo=discord&logoColor=%23f8f8f8&label=discord&color=%23788dd5)](https://veloren.net/discord)
+[![License](https://img.shields.io/github/license/veloren/airshipper?color=blue)](https://gitlab.com/veloren/airshipper/-/blob/master/LICENSE)
+[![GitLab Release](https://img.shields.io/gitlab/v/release/veloren%2Fairshipper?color=blue)](https://gitlab.com/veloren/airshipper/-/releases)
+[![AUR version](https://img.shields.io/aur/version/airshipper?label=AUR)](https://aur.archlinux.org/packages/airshipper/)
 
 A cross-platform Veloren launcher.
 
@@ -16,7 +19,7 @@ A cross-platform Veloren launcher.
 
 **NOTE:** Airshipper cannot be considered stable yet.
 
-For *binary* packages the gitlab releases can be used.
+For *binary* packages the GitLab releases can be used.
 
 For *source* packages **do not** use the `master` branch. Always package latest release either via tag (`v*.*.*`) or branch (`r*.*`) as master is unstable and contains work in progress features.
 
@@ -53,5 +56,12 @@ cargo run --release --bin airshipper-server
 #### For NixOS users
 
 You can install Airshipper with:
+
 - Flakes enabled Nix: `nix profile install gitlab:veloren/Airshipper`
 - Flakes disabled Nix: `nix-env -i -f "https://gitlab.com/veloren/Airshipper/tarball/master"`
+
+## Code of conduct
+
+Our code of conduct is available here:
+
+<https://veloren.net/code-of-conduct>

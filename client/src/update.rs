@@ -1,4 +1,4 @@
-use std::{os::unix::fs::PermissionsExt, time::Duration};
+use std::{os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use crate::{
     WEB_CLIENT,
@@ -53,6 +53,10 @@ async fn version(url: String) -> Result<String, reqwest::Error> {
     WEB_CLIENT.get(url).send().await?.text().await
 }
 
+fn cache_base_path() -> PathBuf {
+    crate::fs::get_cache_path().join("remotezip")
+}
+
 impl State {
     pub(crate) async fn progress(self) -> Option<(Progress, Self)> {
         tokio::time::sleep(Duration::from_millis(5)).await;
@@ -71,17 +75,10 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
         Ok(ok) => ok,
         Err(_) => return Some((Progress::Offline, State::Finished)),
     };
-    let versions_match = Some(remote_version.clone()) == profile.version;
-
-    if !versions_match {
-        tracing::info!("Versions do not match. Fetching remote file infos...");
-    } else {
-        tracing::debug!("Versions do match. Verifying file hashes");
-    }
 
     profile.version = Some(remote_version.clone());
 
-    let cache_file_parent = crate::fs::get_cache_path().join("remotezip");
+    let cache_file_parent = cache_base_path();
     let cache_file = cache_file_parent.join(format!("{remote_version}.ron"));
     let mut cache = None;
     if tokio::fs::create_dir_all(cache_file_parent).await.is_ok() {
@@ -92,6 +89,14 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
         }
     };
     let need_save_cache = cache.is_none();
+
+    if need_save_cache {
+        tracing::info!(
+            "Remote file list not found in cache. Fetching remote file infos..."
+        );
+    } else {
+        tracing::debug!("Remote file list found in cache. Verifying file hashes");
+    }
 
     let Ok(remote) = ReqwestRemoteZip::with_url(profile.download_url()) else {
         return Some((Progress::Offline, State::Finished));
@@ -106,14 +111,24 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
     // we are triggering remozipsy ONCE, so we get the result of the evalute phase
     if let Some((pg, statemachine)) = statemachine.progress().await {
         if need_save_cache {
-            if let Some(content) = remote.try_cache_content() {
-                if let Ok(ron_string) =
-                    to_string_pretty(&content, PrettyConfig::default())
-                {
-                    if let Err(e) = tokio::fs::write(cache_file, ron_string).await {
-                        tracing::warn!(?e, "Could not cache the remote zip");
-                    };
-                }
+            match remote.try_cache_content() {
+                Some(content) => {
+                    match to_string_pretty(&content, PrettyConfig::default()) {
+                        Ok(ron_string) => {
+                            if let Err(e) = tokio::fs::write(cache_file, ron_string).await
+                            {
+                                tracing::warn!(?e, "Could not cache the remote zip");
+                            };
+                        },
+                        Err(e) => tracing::warn!(
+                            ?e,
+                            "Could not serialize remote zip file list for caching"
+                        ),
+                    }
+                },
+                None => tracing::warn!(
+                    "Could not obtain lock on remote zip file list for caching"
+                ),
             }
         }
 
@@ -164,6 +179,23 @@ async fn sync(
 
 // permissions, update params
 async fn final_cleanup(profile: Profile) -> Result<(), String> {
+    if let Some(ref version) = profile.version {
+        if let Ok(dir) = std::fs::read_dir(cache_base_path()) {
+            for file in dir.flatten() {
+                if let Ok(file_name) = file.file_name().into_string() {
+                    if file_name != format!("{version}.ron") {
+                        if let Err(e) = std::fs::remove_file(file.path()) {
+                            tracing::error!(
+                                ?e,
+                                "Failed to remove a file from the cache!"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[cfg(unix)]
     {
         let profile_directory = profile.directory();

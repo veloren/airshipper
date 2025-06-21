@@ -13,10 +13,7 @@ use crate::{
             container::ContainerStyle,
             text::TextStyle,
         },
-        views::{
-            Action,
-            default::{DefaultViewMessage, Interaction},
-        },
+        views::default::{DefaultViewMessage, Interaction},
         widget::*,
     },
     net,
@@ -30,13 +27,19 @@ use iced::{
     },
 };
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use ron::{
+    de::from_str,
+    ser::{PrettyConfig, to_string_pretty},
+};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 #[derive(Clone, Debug)]
 pub enum ChangelogPanelMessage {
     ScrollPositionChanged(f32),
+    LoadChangelog(Result<ChangelogPanelComponent>, Channel),
     UpdateChangelog(Result<Option<ChangelogPanelComponent>>),
+    SaveChangelog,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
@@ -55,7 +58,7 @@ pub fn default_display_count() -> usize {
 
 impl ChangelogPanelComponent {
     #[allow(clippy::while_let_on_iterator)]
-    async fn fetch(channel: Channel) -> Result<Self> {
+    async fn fetch(channel: Channel) -> Result<Option<Self>> {
         let mut versions: Vec<ChangelogVersion> = Vec::new();
 
         let changelog =
@@ -206,18 +209,15 @@ impl ChangelogPanelComponent {
             }
         }
 
-        Ok(ChangelogPanelComponent {
+        Ok(Some(ChangelogPanelComponent {
             etag,
             versions,
             display_count: 2,
-        })
+        }))
     }
 
-    /// Returns new Changelog incase remote one is newer
-    pub async fn update_changelog(
-        version: String,
-        channel: Channel,
-    ) -> Result<Option<Self>> {
+    /// Returns new Changelog in case remote one is newer
+    async fn update_changelog(version: String, channel: Channel) -> Result<Option<Self>> {
         match net::query_etag(consts::CHANGELOG_URL.replace("{tag}", &channel.0)).await? {
             Some(remote_version) => {
                 if version != remote_version {
@@ -225,7 +225,7 @@ impl ChangelogPanelComponent {
                         "Changelog version different (Local: {} Remote: {}), fetching...",
                         version, remote_version
                     );
-                    Ok(Some(Self::fetch(channel).await?))
+                    Self::fetch(channel).await
                 } else {
                     debug!("Changelog up-to-date.");
                     Ok(None)
@@ -234,9 +234,30 @@ impl ChangelogPanelComponent {
             // We query the changelog in case there's no etag to be found
             // to make sure the player stays informed.
             None => {
-                debug!("Changelog missing, fetching...");
-                Ok(Some(Self::fetch(channel).await?))
+                debug!("Changelog remote version missing, fetching...");
+                Self::fetch(channel).await
             },
+        }
+    }
+
+    fn cache_file() -> std::path::PathBuf {
+        crate::fs::get_cache_path().join("changelog.ron")
+    }
+
+    pub async fn load_changelog() -> Result<Self> {
+        Ok(from_str(
+            &tokio::fs::read_to_string(&Self::cache_file()).await?,
+        )?)
+    }
+
+    async fn save_changelog(self) {
+        match to_string_pretty(&self, PrettyConfig::default()) {
+            Ok(ron_string) => {
+                if let Err(e) = tokio::fs::write(Self::cache_file(), ron_string).await {
+                    tracing::warn!(?e, "Could not cache changelog");
+                };
+            },
+            Err(e) => tracing::warn!(?e, "Could not serialize changelog for caching"),
         }
     }
 
@@ -245,13 +266,35 @@ impl ChangelogPanelComponent {
         msg: ChangelogPanelMessage,
     ) -> Option<Command<DefaultViewMessage>> {
         match msg {
+            ChangelogPanelMessage::LoadChangelog(result, channel) => match result {
+                Ok(changelog) => {
+                    *self = changelog;
+                    Some(Command::perform(
+                        Self::update_changelog(self.etag.clone(), channel),
+                        |update| {
+                            DefaultViewMessage::ChangelogPanel(
+                                ChangelogPanelMessage::UpdateChangelog(update),
+                            )
+                        },
+                    ))
+                },
+                Err(e) => {
+                    tracing::trace!(?e, "Failed to load changelog");
+                    Some(Command::perform(Self::fetch(channel), |update| {
+                        DefaultViewMessage::ChangelogPanel(
+                            ChangelogPanelMessage::UpdateChangelog(update),
+                        )
+                    }))
+                },
+            },
             ChangelogPanelMessage::UpdateChangelog(result) => match result {
                 Ok(Some(changelog)) => {
                     *self = changelog;
-                    Some(Command::perform(
-                        async { Action::Save },
-                        DefaultViewMessage::Action,
-                    ))
+                    Some(Command::perform(Self::save_changelog(self.clone()), |_| {
+                        DefaultViewMessage::ChangelogPanel(
+                            ChangelogPanelMessage::SaveChangelog,
+                        )
+                    }))
                 },
                 Ok(None) => None,
                 Err(e) => {
@@ -259,6 +302,7 @@ impl ChangelogPanelComponent {
                     None
                 },
             },
+            ChangelogPanelMessage::SaveChangelog => None,
             ChangelogPanelMessage::ScrollPositionChanged(pos) => {
                 if pos > 0.9 && self.display_count < self.versions.len() {
                     self.display_count += 1;

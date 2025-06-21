@@ -1,11 +1,11 @@
-use crate::{
-    ClientError, Result, fs,
-    gui::views::{Action, default::DefaultViewMessage},
-    net,
-};
+use crate::{ClientError, Result, fs, gui::views::default::DefaultViewMessage, net};
 use futures_util::future::join_all;
 use iced::{Command, widget::image::Handle};
 use image::{ExtendedColorType, ImageFormat, imageops::FilterType};
+use ron::{
+    de::from_str,
+    ser::{PrettyConfig, to_string_pretty},
+};
 use rss::Channel;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, warn};
@@ -14,7 +14,9 @@ use tracing::{debug, error, warn};
 pub enum RssFeedUpdateStatus {
     NoUpdateRequired,
     UpdateFailed(ClientError),
+    Loaded(RssFeedData),
     Updated(RssFeedData),
+    Saved,
 }
 
 #[derive(Clone, Debug)]
@@ -27,6 +29,7 @@ pub enum RssFeedComponentMessage {
 pub trait RssFeedComponent {
     const IMAGE_HEIGHT: u32;
     const NAME: &str;
+    const FEED_URL: &str;
 
     /// Stores the feed against the component's own state
     fn store_feed(&mut self, rss_feed_data: RssFeedData);
@@ -35,8 +38,8 @@ pub trait RssFeedComponent {
     fn posts(&self) -> Vec<RssPost>;
     fn posts_mut(&mut self) -> Vec<&mut RssPost>;
 
-    /// Returns the message to send after having fetched an image
-    fn image_fetched(url: String, result: Result<Handle>) -> DefaultViewMessage;
+    /// Returns the associated DefaultViewMessage for the given RssFeedComponentMessage
+    fn rss_feed_message(message: RssFeedComponentMessage) -> DefaultViewMessage;
 
     /// An optional hook that is called after the RSS feed is updated
     fn after_rss_feed_updated(&mut self) {}
@@ -47,15 +50,34 @@ pub trait RssFeedComponent {
     ) -> Option<Command<DefaultViewMessage>> {
         match msg {
             RssFeedComponentMessage::UpdateRssFeed(status) => match status {
-                RssFeedUpdateStatus::Updated(rss_feed_data) => {
-                    self.store_feed(rss_feed_data);
-                    self.after_rss_feed_updated();
-
+                RssFeedUpdateStatus::Loaded(feed_data) => {
+                    let etag = feed_data.etag.clone();
+                    self.store_feed(feed_data);
                     Some(Command::perform(
-                        async { Action::Save },
-                        DefaultViewMessage::Action,
+                        RssFeedData::update_feed(
+                            Self::FEED_URL,
+                            Self::NAME,
+                            Self::IMAGE_HEIGHT,
+                            etag,
+                        ),
+                        move |status| {
+                            Self::rss_feed_message(
+                                RssFeedComponentMessage::UpdateRssFeed(status),
+                            )
+                        },
                     ))
                 },
+                RssFeedUpdateStatus::Updated(feed_data) => {
+                    self.store_feed(feed_data.clone());
+                    self.after_rss_feed_updated();
+
+                    Some(Command::perform(feed_data.save_feed(Self::NAME), |_| {
+                        Self::rss_feed_message(RssFeedComponentMessage::UpdateRssFeed(
+                            RssFeedUpdateStatus::Saved,
+                        ))
+                    }))
+                },
+                RssFeedUpdateStatus::Saved => None,
                 RssFeedUpdateStatus::NoUpdateRequired => {
                     // On application startup when there's been no rss update since the
                     // last run the posts will have been de-serialized  without their
@@ -80,7 +102,14 @@ pub trait RssFeedComponent {
                                     post.image_cache_name(),
                                     Self::IMAGE_HEIGHT,
                                 ),
-                                move |img| Self::image_fetched(url, img),
+                                move |result| {
+                                    Self::rss_feed_message(
+                                        RssFeedComponentMessage::ImageFetched {
+                                            url,
+                                            result,
+                                        },
+                                    )
+                                },
                             ))
                         })
                         .collect();
@@ -123,11 +152,11 @@ pub struct RssFeedData {
 }
 
 impl RssFeedData {
-    pub async fn update_feed(
+    async fn update_feed(
         feed_url: &str,
-        local_version: String,
         name: &str,
         height: u32,
+        local_version: String,
     ) -> RssFeedUpdateStatus {
         let fetch = move |local_version: String| async move {
             match net::query_etag(feed_url).await? {
@@ -141,7 +170,7 @@ impl RssFeedData {
                             remote_version
                         );
                         Ok(RssFeedUpdateStatus::Updated(
-                            RssFeedData::fetch(feed_url, name, height).await?,
+                            Self::fetch(feed_url, name, height).await?,
                         ))
                     } else {
                         debug!(?feed_url, "RSS feed up-to-date.");
@@ -155,7 +184,7 @@ impl RssFeedData {
                         "No etag found for RSS feed, assuming an update is required."
                     );
                     Ok(RssFeedUpdateStatus::Updated(
-                        RssFeedData::fetch(feed_url, name, height).await?,
+                        Self::fetch(feed_url, name, height).await?,
                     ))
                 },
             }
@@ -166,7 +195,52 @@ impl RssFeedData {
             .unwrap_or_else(RssFeedUpdateStatus::UpdateFailed)
     }
 
-    pub async fn fetch(feed_url: &str, name: &str, height: u32) -> Result<RssFeedData> {
+    fn cache_file(name: &str) -> std::path::PathBuf {
+        crate::fs::get_cache_path().join(format!("{name}.ron"))
+    }
+
+    pub async fn load_feed(
+        feed_url: &str,
+        name: &str,
+        height: u32,
+    ) -> RssFeedUpdateStatus {
+        match tokio::fs::read_to_string(&Self::cache_file(name)).await {
+            Ok(string) => match from_str(&string) {
+                Ok(feed_data) => return RssFeedUpdateStatus::Loaded(feed_data),
+                Err(e) => tracing::trace!(
+                    ?e,
+                    "Failed to deserialize cached feed data for feed: {}",
+                    name
+                ),
+            },
+            Err(e) => {
+                tracing::trace!(?e, "Failed to read cached feed data for feed: {}", name)
+            },
+        }
+
+        match Self::fetch(feed_url, name, height).await {
+            Ok(feed_data) => RssFeedUpdateStatus::Updated(feed_data),
+            Err(e) => RssFeedUpdateStatus::UpdateFailed(e),
+        }
+    }
+
+    async fn save_feed(self, name: &str) {
+        match to_string_pretty(&self, PrettyConfig::default()) {
+            Ok(ron_string) => {
+                if let Err(e) = tokio::fs::write(Self::cache_file(name), ron_string).await
+                {
+                    tracing::warn!(?e, "Could not cache feed data for feed: {}", name);
+                };
+            },
+            Err(e) => tracing::warn!(
+                ?e,
+                "Could not serialize feed data for caching of feed: {}",
+                name
+            ),
+        }
+    }
+
+    async fn fetch(feed_url: &str, name: &str, height: u32) -> Result<RssFeedData> {
         use std::io::BufReader;
 
         let feed_response = net::query(feed_url).await?;

@@ -1,4 +1,5 @@
-use crate::{channels::Channel, consts, fs};
+use crate::{Result, channels::Channel, consts, fs};
+use ron::ser::PrettyConfig;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -6,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
 };
-use tokio::process::Command;
+use tokio::{fs::File, io::AsyncWriteExt, process::Command};
 use tracing::error;
 
 // TODO: Support multiple profiles and manage them here.
@@ -172,6 +173,60 @@ impl Profile {
             patched_crc32s: Vec::new(),
             supported_wgpu_backends: Vec::new(),
         }
+    }
+
+    pub fn load() -> Self {
+        fs::verify_cache();
+        let saved_state_file = fs::savedstate_file();
+        match std::fs::File::open(&saved_state_file) {
+            Ok(file) => {
+                match ron::de::from_reader(file) {
+                    Ok(profile) => {
+                        // Rust type inference magic
+                        let mut profile: Profile = profile;
+                        profile.reload_wgpu_backends();
+                        profile
+                    },
+                    Err(e) => {
+                        tracing::debug!(
+                            "Decoding state failed. Falling back to default: {}",
+                            e
+                        );
+                        Self::default()
+                    },
+                }
+            },
+            Err(e) => {
+                tracing::debug!(
+                    ?e,
+                    "Failed to read saved state from {}, falling back to default state",
+                    saved_state_file.to_string_lossy()
+                );
+                Self::default()
+            },
+        }
+    }
+
+    pub async fn save(self) -> Result<()> {
+        let data = tokio::task::block_in_place(|| {
+            ron::ser::to_string_pretty(&self, PrettyConfig::default())
+        })?;
+        let mut file = File::create(fs::savedstate_file()).await?;
+        file.write_all(data.as_bytes()).await?;
+        file.sync_all().await?;
+
+        Ok(())
+    }
+
+    pub async fn save_ref(&self) -> Result<()> {
+        let data = tokio::task::block_in_place(|| {
+            ron::ser::to_string_pretty(self, PrettyConfig::default())
+        })?;
+        let mut file = File::create(fs::savedstate_file()).await?;
+        file.write_all(data.as_bytes()).await?;
+        file.sync_all().await?;
+
+        Ok(())
     }
 
     pub fn directory(&self) -> PathBuf {

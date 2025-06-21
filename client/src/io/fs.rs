@@ -1,7 +1,11 @@
 //! Deals with all filesystem specific details
 
 use crate::consts;
-use std::path::{Path, PathBuf};
+use ron::ser::PrettyConfig;
+use std::{
+    io::Write,
+    path::{Path, PathBuf},
+};
 
 lazy_static::lazy_static! {
     // Base for config, profiles, ...
@@ -38,6 +42,43 @@ pub fn get_cache_path() -> PathBuf {
         .join(env!("CARGO_PKG_NAME"));
     std::fs::create_dir_all(&cache_path).expect("failed to create cache directory!");
     cache_path
+}
+
+pub fn verify_cache() {
+    let cache_version_file = get_cache_path().join("cache_version.ron");
+    match std::fs::File::open(&cache_version_file) {
+        Ok(file) => match ron::de::from_reader(file) {
+            Ok(cache_version) => {
+                let cache_version: u8 = cache_version;
+                if cache_version == consts::CACHE_VERSION {
+                    tracing::debug!("Cache version matches");
+                    return;
+                } else {
+                    tracing::debug!("Cache version doesn't match. Clearing cache");
+                }
+            },
+            Err(e) => {
+                tracing::debug!(?e, "Failed to decode cache version. Clearing cache")
+            },
+        },
+        Err(e) => {
+            tracing::debug!(
+                ?e,
+                "Failed to read cache version file, probably doesn't exist. Clearing \
+                 cache"
+            );
+        },
+    }
+    let _ = std::fs::remove_dir_all(get_cache_path());
+    // Create cache dir again
+    let _ = get_cache_path();
+    let cache_version =
+        ron::ser::to_string_pretty(&consts::CACHE_VERSION, PrettyConfig::default())
+            .expect("Failed to serialize cache version!");
+    let mut file = std::fs::File::create(cache_version_file)
+        .expect("Failed to create the cache version file!");
+    file.write_all(cache_version.as_bytes())
+        .expect("Failed to write to cache version file!");
 }
 
 /// Returns path to the file which saves the current state

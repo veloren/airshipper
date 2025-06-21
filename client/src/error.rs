@@ -8,7 +8,7 @@ pub enum ClientError {
     NetworkError,
     #[error("FATAL: Failed to start GUI!")]
     IcedError,
-    #[error("FATAL: Failed to save/load airshipper configuration!")]
+    #[error("Failed to save/load ron data.")]
     RonError,
     #[error("Failed to parse Veloren News.")]
     RssError,
@@ -62,6 +62,7 @@ macro_rules! impl_from {
 impl_from!(std::io::Error, ClientError::IoError);
 impl_from!(reqwest::Error, ClientError::NetworkError);
 impl_from!(ron::Error, ClientError::RonError);
+impl_from!(ron::de::SpannedError, ClientError::RonError);
 impl_from!(rss::Error, ClientError::RssError);
 impl_from!(opener::OpenError, ClientError::OpenerError);
 impl_from!(url::ParseError, ClientError::UrlParseError);

@@ -1,6 +1,7 @@
 use crate::{
     ClientError, Result,
     consts::{SERVER_CLI_FILE, VOXYGEN_FILE},
+    profiles::PatchedInfo,
 };
 use std::{ffi::OsString, path::Path};
 
@@ -25,7 +26,7 @@ pub fn is_nixos() -> Result<bool> {
 /// Patches an executable file. Required for NixOS.
 ///
 /// Note: it's synchronous!
-pub fn patch(profile_directory: &Path, file: &str) -> Result<()> {
+pub fn patch(profile_directory: &Path, file: &str) -> Result<PatchedInfo> {
     tracing::info!("Patching an executable file for NixOS");
 
     let patcher = match file {
@@ -37,6 +38,15 @@ pub fn patch(profile_directory: &Path, file: &str) -> Result<()> {
         })?,
         _ => return Err(ClientError::Custom("Unknown file to patch".to_string())),
     };
+
+    // get pre-patched-crc32
+    let patched_file = {
+        let mut f = profile_directory.to_path_buf();
+        f.push(file);
+        f
+    };
+    let file_bytes = std::fs::read(&patched_file)?;
+    let pre_crc32 = crc32fast::hash(&file_bytes);
 
     // Patch the file
     tracing::info!("Executing {patcher:?} on directory {profile_directory:?}");
@@ -57,5 +67,12 @@ pub fn patch(profile_directory: &Path, file: &str) -> Result<()> {
         tracing::info!("Patched executable file:\n{stdout}");
     }
 
-    Ok(())
+    let file_bytes = std::fs::read(&patched_file)?;
+    let post_crc32 = crc32fast::hash(&file_bytes);
+
+    Ok(PatchedInfo {
+        local_unix_path: file.to_string(),
+        pre_crc32,
+        post_crc32,
+    })
 }

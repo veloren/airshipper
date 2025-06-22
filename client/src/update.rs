@@ -1,10 +1,10 @@
-use std::{os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
+use std::{future::Future, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use crate::{
     WEB_CLIENT,
     consts::{SERVER_CLI_FILE, VOXYGEN_FILE},
     nix,
-    profiles::Profile,
+    profiles::{PatchedInfo, Profile},
 };
 use futures_util::{Stream, stream};
 use remozipsy::{
@@ -38,7 +38,7 @@ pub(super) enum State {
     ToBeEvaluated(Profile),
     Sync(
         Profile,
-        Statemachine<ReqwestCachedRemoteZip<reqwest::Client>, TokioLocalStorage>,
+        Statemachine<ReqwestCachedRemoteZip<reqwest::Client>, PatchedLocalStorage>,
     ),
     /// in case its finished early while evaluating
     Finished,
@@ -104,7 +104,10 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
     let remote = ReqwestCachedRemoteZip::with_inner(remote, cache);
     const KEEP_PATHS: &[&str] = &["userdata/", "screenshots/", "maps/", "veloren.zip"];
     let ignore = KEEP_PATHS.iter().map(|p| p.to_string()).collect();
-    let local = TokioLocalStorage::new(profile.directory(), ignore);
+    let local = PatchedLocalStorage {
+        inner: TokioLocalStorage::new(profile.directory(), ignore),
+        patches: profile.patched_crc32s.clone(),
+    };
     let config = remozipsy::Config::default();
     let statemachine = Statemachine::new(remote.clone(), local, config);
 
@@ -150,7 +153,7 @@ async fn sync(
     profile: Profile,
     statemachine: Statemachine<
         ReqwestCachedRemoteZip<reqwest::Client>,
-        TokioLocalStorage,
+        PatchedLocalStorage,
     >,
 ) -> Option<(Progress, State)> {
     match statemachine.progress().await {
@@ -162,12 +165,9 @@ async fn sync(
             remozipsy::Progress::Deleting(deleting) => {
                 (Progress::Deleting(deleting), State::Sync(profile, s))
             },
-            remozipsy::Progress::Successful => {
-                if let Err(e) = final_cleanup(profile.clone()).await {
-                    (Progress::Errored(e.to_string()), State::Finished)
-                } else {
-                    (Progress::Successful(profile.clone()), State::Finished)
-                }
+            remozipsy::Progress::Successful => match final_cleanup(profile).await {
+                Ok(p) => (Progress::Successful(p), State::Finished),
+                Err(e) => (Progress::Errored(e.to_string()), State::Finished),
             },
             remozipsy::Progress::Errored(e) => {
                 (Progress::Errored(e.to_string()), State::Finished)
@@ -178,7 +178,7 @@ async fn sync(
 }
 
 // permissions, update params
-async fn final_cleanup(profile: Profile) -> Result<(), String> {
+async fn final_cleanup(mut profile: Profile) -> Result<Profile, String> {
     if let Some(ref version) = profile.version {
         if let Ok(dir) = std::fs::read_dir(cache_base_path()) {
             for file in dir.flatten() {
@@ -196,14 +196,20 @@ async fn final_cleanup(profile: Profile) -> Result<(), String> {
         }
     }
 
+    profile.patched_crc32s.clear();
+
     #[cfg(unix)]
     {
         let profile_directory = profile.directory();
 
         // Patch executable files if we are on NixOS
         if nix::is_nixos().map_err(|e| e.to_string())? {
-            nix::patch(&profile_directory, VOXYGEN_FILE).map_err(|e| e.to_string())?;
-            nix::patch(&profile_directory, SERVER_CLI_FILE).map_err(|e| e.to_string())?;
+            let info = nix::patch(&profile_directory, VOXYGEN_FILE)
+                .map_err(|e| e.to_string())?;
+            profile.patched_crc32s.push(info);
+            let info = nix::patch(&profile_directory, SERVER_CLI_FILE)
+                .map_err(|e| e.to_string())?;
+            profile.patched_crc32s.push(info);
         } else {
             let p = |path| async move {
                 let meta = tokio::fs::metadata(&path)
@@ -217,7 +223,7 @@ async fn final_cleanup(profile: Profile) -> Result<(), String> {
                 Ok::<(), String>(())
             };
 
-            tracing::info!("patching unix files");
+            tracing::info!("patching unix exec files");
             let voxygen_file = profile_directory.join(VOXYGEN_FILE);
             p(voxygen_file).await?;
             let server_cli_file = profile_directory.join(SERVER_CLI_FILE);
@@ -225,5 +231,55 @@ async fn final_cleanup(profile: Profile) -> Result<(), String> {
         }
     }
 
-    Ok(())
+    Ok(profile)
+}
+
+/// allows patching the actual local files with some data that we have stored, is used in
+/// nixos to prevent always-redownload of binary files
+#[derive(Debug, Clone)]
+pub struct PatchedLocalStorage {
+    inner: TokioLocalStorage,
+    patches: Vec<PatchedInfo>,
+}
+
+impl remozipsy::FileSystem for PatchedLocalStorage {
+    type Error = remozipsy::tokio::TokioLocalStorageError;
+    type StorePrepare = tokio::fs::File;
+
+    async fn all_files(&mut self) -> Result<Vec<remozipsy::FileInfo>, Self::Error> {
+        let mut all_files = self.inner.all_files().await?;
+
+        for patches in &self.patches {
+            if let Some(to_be_manipulated) = all_files.iter_mut().find(|e| {
+                e.local_unix_path == patches.local_unix_path
+                    && e.crc32 == patches.post_crc32
+            }) {
+                to_be_manipulated.crc32 = patches.pre_crc32;
+            }
+        }
+
+        Ok(all_files)
+    }
+
+    fn delete_file(
+        &self,
+        info: remozipsy::FileInfo,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        self.inner.delete_file(info)
+    }
+
+    fn prepare_store_file(
+        &self,
+        info: remozipsy::FileInfo,
+    ) -> impl Future<Output = Result<Self::StorePrepare, Self::Error>> {
+        self.inner.prepare_store_file(info)
+    }
+
+    fn store_file(
+        &self,
+        prepared: Self::StorePrepare,
+        data: bytes::Bytes,
+    ) -> impl Future<Output = Result<(), Self::Error>> {
+        self.inner.store_file(prepared, data)
+    }
 }

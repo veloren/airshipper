@@ -32,6 +32,9 @@ pub struct Profile {
     // TODO: make a file-picker UI for this
     pub assets_override: Option<String>,
 
+    /// used to avoid duplicate redownload of patched binaries on nixos
+    pub patched_crc32s: Vec<PatchedInfo>,
+
     #[serde(skip)]
     pub supported_wgpu_backends: Vec<WgpuBackend>,
 }
@@ -45,6 +48,13 @@ impl Default for Profile {
             Channel("weekly".to_owned()),
         )
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PatchedInfo {
+    pub(crate) local_unix_path: String,
+    pub(crate) pre_crc32: u32,
+    pub(crate) post_crc32: u32,
 }
 
 #[derive(
@@ -159,6 +169,7 @@ impl Profile {
             log_level: LogLevel::Default,
             env_vars: String::new(),
             assets_override: None,
+            patched_crc32s: Vec::new(),
             supported_wgpu_backends: Vec::new(),
         }
     }

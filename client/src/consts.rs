@@ -3,8 +3,6 @@ pub const CACHE_VERSION: u8 = 1;
 
 // Filesystem
 
-pub const DOWNLOAD_FILE: &str = "veloren.zip";
-
 #[cfg(windows)]
 pub const VOXYGEN_FILE: &str = "veloren-voxygen.exe";
 #[cfg(unix)]

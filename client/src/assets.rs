@@ -30,7 +30,7 @@ pub const KEY_ICON: &[u8] = include_bytes!("../assets/icons/key.png");
 pub const UNIVERSAL_FONT: Font = Font::DEFAULT;
 
 #[cfg(feature = "bundled_font")]
-pub const UNIVERSAL_FONT: Font = Font::with_name("Noto Sans Unified");
+pub const UNIVERSAL_FONT: Font = Font::with_name("Go Noto Current");
 #[cfg(feature = "bundled_font")]
 pub const UNIVERSAL_FONT_BYTES: &[u8] =
     include_bytes!("../assets/fonts/GoNotoCurrent.ttf");

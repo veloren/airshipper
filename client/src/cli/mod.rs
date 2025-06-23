@@ -113,29 +113,23 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
     use crate::update::{Progress, update};
     use indicatif::{ProgressBar, ProgressStyle};
 
-    let progress_bar = ProgressBar::new(0).with_style(
+    let progress_bar = ProgressBar::new(100).with_style(
         ProgressStyle::default_bar()
             .template("[{elapsed_precise}] [{bar:40.green/white}] {msg} [{eta}]")
             .unwrap()
             .progress_chars("=>-"),
     );
-    progress_bar.set_length(100);
+    progress_bar.set_message("Evaluating Update");
 
-    let mut stream = update(airshipper.active_profile.clone(), false).boxed();
+    tracing::debug!("start updating");
+
+    let mut stream = update(airshipper.active_profile.clone()).boxed();
 
     while let Some(progress) = stream.next().await {
         match progress {
-            Progress::Evaluating => {
-                let next = if progress_bar.position() == 33 {
-                    66
-                } else {
-                    33
-                };
+            Progress::ReadyToSync { version } => {
+                tracing::debug!(?version, "Updating profile");
 
-                progress_bar.set_message("Evaluating Update");
-                progress_bar.set_position(next);
-            },
-            Progress::ReadyToDownload => {
                 if !do_not_ask {
                     tracing::info!("Update found, do you want to update? [Y/n]");
                     if !confirm_action()? {
@@ -145,25 +139,41 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
                     }
                 }
             },
-            Progress::InProgress(progress_data) => {
-                let step = progress_data.cur_step();
-                let file_info = match step.content.show() {
-                    "" => "".to_string(),
-                    s => format!(": {s}"),
+            Progress::DownloadExtracting { download, unzip } => {
+                let (step, progress) = match (download.is_finished(), unzip.is_finished())
+                {
+                    (false, _) => ("Downloading", &download),
+                    (true, false) => ("Unzipping", &unzip),
+                    (true, true) => ("Finalizing", &unzip),
                 };
-                progress_bar.set_position(step.percent_complete());
+                progress_bar.set_position(progress.percent_complete());
                 progress_bar.set_message(format!(
-                    "{} / {} {file_info}",
-                    pretty_bytes(step.processed_bytes),
-                    pretty_bytes(step.total_bytes),
+                    "{} / {} ({step})",
+                    pretty_bytes(progress.processed_bytes()),
+                    pretty_bytes(progress.total_bytes()),
+                ));
+            },
+            Progress::Deleting(delete) => {
+                progress_bar.set_position(delete.percent_complete());
+                progress_bar.set_message(format!(
+                    "{} / {} (Deleting)",
+                    pretty_bytes(delete.processed_bytes()),
+                    pretty_bytes(delete.total_bytes()),
                 ));
             },
             Progress::Successful(new_profile) => {
-                tracing::debug!(?new_profile, "Updating profile");
+                tracing::debug!("Updating profile");
                 airshipper.active_profile = new_profile;
+                // Save state
+                airshipper.save_mut().await?;
                 return Ok(());
             },
-            Progress::Errored(e) => return Err(ClientError::Custom(e.to_string())),
+            Progress::Errored(e) => {
+                return Err(ClientError::Update(e));
+            },
+            Progress::Offline => {
+                return Err(ClientError::Custom("No internet connection".to_string()));
+            },
         }
     }
     Ok(())

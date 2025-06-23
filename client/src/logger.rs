@@ -46,6 +46,9 @@ pub fn init(log_path_file: Option<(&Path, &str)>, level: LevelFilter) -> Vec<imp
         "trust_dns_resolver=info",
         "trust_dns_proto=info",
         "mio=warn",
+        "calloop=info",
+        "polling=info",
+        "cosmic_text=info",
     ];
 
     for s in default_directives {

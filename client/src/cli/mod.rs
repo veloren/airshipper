@@ -168,7 +168,7 @@ async fn update(profile: &mut Profile, do_not_ask: bool) -> Result<()> {
                 return Ok(());
             },
             Progress::Errored(e) => {
-                return Err(ClientError::Update(e));
+                return Err(e);
             },
             Progress::Offline => {
                 return Err(ClientError::Custom("No internet connection".to_string()));

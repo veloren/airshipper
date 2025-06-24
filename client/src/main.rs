@@ -28,7 +28,7 @@ fn main() {
     // If we fail to read a line, the user probably cancelled an action
     if let Some(e) = cli::process()
         .err()
-        .filter(|e| !matches!(e, ClientError::ReadlineError))
+        .filter(|e| !matches!(e, ClientError::Readline(_)))
     {
         tracing::error!("{}", e);
         tracing::info!("Press enter to exit...");

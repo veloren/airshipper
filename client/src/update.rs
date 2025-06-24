@@ -185,10 +185,10 @@ async fn sync(
 // permissions, update params
 async fn final_cleanup(mut profile: Profile) -> Result<Profile, ClientError> {
     // dont error, if cleanup fails
-    const DAYS_30: Duration = Duration::from_secs(30 * 86400);
+    const DAYS_14: Duration = Duration::from_secs(14 * 86400);
     if let (Ok(dir), Some(max_age)) = (
         std::fs::read_dir(cache_base_path()),
-        SystemTime::now().checked_sub(DAYS_30),
+        SystemTime::now().checked_sub(DAYS_14),
     ) {
         for file in dir.flatten() {
             if let Err(e) = || -> Result<(), Box<dyn std::error::Error>> {

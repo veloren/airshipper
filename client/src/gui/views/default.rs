@@ -193,14 +193,13 @@ impl DefaultView {
                         )
                     }),
                     Command::perform(
-                        AnnouncementPanelComponent::load_announcement(),
-                        move |update| {
+                        AnnouncementPanelComponent::fetch(
+                            api_version_url,
+                            announcement_url,
+                        ),
+                        |update| {
                             DefaultViewMessage::AnnouncementPanel(
-                                AnnouncementPanelMessage::LoadAnnouncement(
-                                    update,
-                                    api_version_url,
-                                    announcement_url,
-                                ),
+                                AnnouncementPanelMessage::FetchAnnouncement(update),
                             )
                         },
                     ),

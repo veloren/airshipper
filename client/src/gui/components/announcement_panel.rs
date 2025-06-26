@@ -14,33 +14,26 @@ use iced::{
     alignment::Vertical,
     widget::{button, column, container, image, image::Handle, row, text},
 };
-use ron::{
-    de::from_str,
-    ser::{PrettyConfig, to_string_pretty},
-};
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 #[derive(Clone, Debug)]
-#[allow(clippy::enum_variant_names)]
 pub enum AnnouncementPanelMessage {
-    LoadAnnouncement(Result<AnnouncementPanelComponent>, String, String),
-    UpdateAnnouncement(Result<Option<AnnouncementPanelComponent>>),
-    SaveAnnouncement,
+    FetchAnnouncement(Result<AnnouncementPanelComponent>),
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct AnnouncementPanelComponent {
     pub announcement_message: Option<String>,
     pub announcement_last_change: chrono::DateTime<chrono::Utc>,
-    pub api_version: u32,
+    pub api_version: Option<u32>,
 }
 
 impl AnnouncementPanelComponent {
-    async fn fetch(
+    pub async fn fetch(
         api_version_url: String,
         announcement_url: String,
-    ) -> Result<Option<Self>> {
+    ) -> Result<Self> {
         #[derive(Deserialize)]
         pub struct Version {
             version: u32,
@@ -60,50 +53,11 @@ impl AnnouncementPanelComponent {
             .json::<Announcement>()
             .await?;
 
-        Ok(Some(AnnouncementPanelComponent {
+        Ok(AnnouncementPanelComponent {
             announcement_message: announcement.message,
             announcement_last_change: announcement.last_change,
-            api_version: version.version,
-        }))
-    }
-
-    /// Returns new Announcement in case remote one is newer
-    async fn update_announcement(
-        last_change: chrono::DateTime<chrono::Utc>,
-        api_version_url: String,
-        announcement_url: String,
-    ) -> Result<Option<Self>> {
-        let new = Self::fetch(api_version_url, announcement_url)
-            .await?
-            .unwrap();
-        Ok(if new.announcement_last_change != last_change {
-            debug!("Announcement is newer");
-            Some(new)
-        } else {
-            debug!("Announcement is same as before");
-            None
+            api_version: Some(version.version),
         })
-    }
-
-    fn cache_file() -> std::path::PathBuf {
-        crate::fs::get_cache_path().join("announcement.ron")
-    }
-
-    pub async fn load_announcement() -> Result<Self> {
-        Ok(from_str(
-            &tokio::fs::read_to_string(&Self::cache_file()).await?,
-        )?)
-    }
-
-    async fn save_announcement(self) {
-        match to_string_pretty(&self, PrettyConfig::default()) {
-            Ok(ron_string) => {
-                if let Err(e) = tokio::fs::write(Self::cache_file(), ron_string).await {
-                    tracing::warn!(?e, "Could not cache announcement");
-                };
-            },
-            Err(e) => tracing::warn!(?e, "Could not serialize announcement for caching"),
-        }
     }
 
     pub fn update(
@@ -111,62 +65,24 @@ impl AnnouncementPanelComponent {
         msg: AnnouncementPanelMessage,
     ) -> Option<Command<DefaultViewMessage>> {
         match msg {
-            AnnouncementPanelMessage::LoadAnnouncement(
-                result,
-                api_version_url,
-                announcement_url,
-            ) => match result {
+            AnnouncementPanelMessage::FetchAnnouncement(result) => match result {
                 Ok(announcement) => {
                     *self = announcement;
-                    Some(Command::perform(
-                        Self::update_announcement(
-                            self.announcement_last_change,
-                            api_version_url,
-                            announcement_url,
-                        ),
-                        |update| {
-                            DefaultViewMessage::AnnouncementPanel(
-                                AnnouncementPanelMessage::UpdateAnnouncement(update),
-                            )
-                        },
-                    ))
+                    None
                 },
                 Err(e) => {
-                    tracing::trace!(?e, "Failed to load announcement");
-                    Some(Command::perform(
-                        Self::fetch(api_version_url, announcement_url),
-                        |update| {
-                            DefaultViewMessage::AnnouncementPanel(
-                                AnnouncementPanelMessage::UpdateAnnouncement(update),
-                            )
-                        },
-                    ))
-                },
-            },
-            AnnouncementPanelMessage::UpdateAnnouncement(result) => match result {
-                Ok(Some(announcement)) => {
-                    *self = announcement;
-                    Some(Command::perform(
-                        Self::save_announcement(self.clone()),
-                        |_| {
-                            DefaultViewMessage::AnnouncementPanel(
-                                AnnouncementPanelMessage::SaveAnnouncement,
-                            )
-                        },
-                    ))
-                },
-                Ok(None) => None,
-                Err(e) => {
-                    tracing::trace!("Failed to update announcement: {}", e);
+                    tracing::trace!("Failed to fetch announcement: {}", e);
                     None
                 },
             },
-            AnnouncementPanelMessage::SaveAnnouncement => None,
         }
     }
 
     pub fn view(&self) -> Element<DefaultViewMessage> {
-        let update = SUPPORTED_SERVER_API_VERSION != self.api_version;
+        let update = match self.api_version {
+            Some(version) => SUPPORTED_SERVER_API_VERSION != version,
+            None => false,
+        };
         let rowtext = match (update, &self.announcement_message) {
             (false, None) => {
                 return row![].into();

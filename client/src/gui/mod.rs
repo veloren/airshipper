@@ -17,14 +17,10 @@ use crate::{
         POPPINS_MEDIUM_FONT_BYTES,
     },
     cli::CmdLine,
-    consts::CACHE_VERSION,
-    fs,
     gui::{style::AirshipperTheme, widget::*},
     profiles::Profile,
 };
 use iced::{Application, Command, Settings, Size, Subscription};
-use ron::ser::PrettyConfig;
-use tokio::{fs::File, io::AsyncWriteExt};
 #[cfg(windows)]
 use views::update::{UpdateView, UpdateViewMessage};
 use views::{
@@ -37,116 +33,38 @@ pub fn run(cmd: CmdLine) -> Result<()> {
     Ok(Airshipper::run(settings(cmd))?)
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Airshipper {
-    #[serde(skip)]
     view: View,
 
     pub default_view: DefaultView,
     #[cfg(windows)]
-    #[serde(skip)]
     update_view: UpdateView,
     pub active_profile: Profile,
-    #[serde(default)]
-    cache_version: u8,
 
     // Airshipper update
     #[cfg(windows)]
-    #[serde(skip)]
     update: Option<self_update::update::Release>,
-
-    #[serde(skip)]
-    cmd: CmdLine,
 }
 
 impl Airshipper {
-    pub fn new(cmd: &CmdLine) -> Self {
+    pub fn new(active_profile: Profile) -> Self {
         Self {
             view: View::default(),
             default_view: DefaultView::default(),
             #[cfg(windows)]
             update_view: UpdateView::default(),
-            active_profile: Profile::default(),
-            cache_version: CACHE_VERSION,
+            active_profile,
             #[cfg(windows)]
             update: None,
-            cmd: cmd.clone(),
         }
-    }
-
-    pub async fn load(flags: CmdLine) -> Self {
-        tokio::task::block_in_place(|| {
-            let saved_state_file = fs::savedstate_file();
-            match std::fs::File::open(&saved_state_file) {
-                Ok(file) => {
-                    match ron::de::from_reader(file) {
-                        Ok(state) => {
-                            // Rust type inference magic
-                            let mut state: Airshipper = state;
-                            state.cmd = flags;
-
-                            state.active_profile.reload_wgpu_backends();
-
-                            // Clear cache if version does not match
-                            if state.cache_version != CACHE_VERSION {
-                                let _ = std::fs::remove_dir_all(fs::get_cache_path());
-                                state.cache_version = CACHE_VERSION;
-                            }
-
-                            state
-                        },
-                        Err(e) => {
-                            tracing::debug!(
-                                "Reading state failed. Falling back to default: {}",
-                                e
-                            );
-                            let _ = std::fs::remove_dir_all(fs::get_cache_path());
-                            Self::new(&flags)
-                        },
-                    }
-                },
-                Err(e) => {
-                    tracing::debug!(
-                        ?e,
-                        "Failed to read saved state from {}, falling back to default \
-                         state",
-                        saved_state_file.to_string_lossy()
-                    );
-                    let _ = std::fs::remove_dir_all(fs::get_cache_path());
-                    Self::new(&flags)
-                },
-            }
-        })
-    }
-
-    pub async fn save(airshipper: Self) -> Result<()> {
-        let data = tokio::task::block_in_place(|| {
-            ron::ser::to_string_pretty(&airshipper, PrettyConfig::default())
-        })?;
-
-        let mut file = File::create(fs::savedstate_file()).await?;
-        file.write_all(data.as_bytes()).await?;
-        file.sync_all().await?;
-
-        Ok(())
-    }
-
-    pub async fn save_mut(&mut self) -> Result<()> {
-        let data = tokio::task::block_in_place(|| {
-            ron::ser::to_string_pretty(&self, PrettyConfig::default())
-        })?;
-        let mut file = File::create(fs::savedstate_file()).await?;
-        file.write_all(data.as_bytes()).await?;
-        file.sync_all().await?;
-
-        Ok(())
     }
 }
 
 #[allow(clippy::enum_variant_names, clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum Message {
-    Loaded(Airshipper), // Todo: put in Box<>
+    Loaded,
     #[allow(dead_code)]
     Saved(Result<()>),
 
@@ -162,13 +80,13 @@ impl Application for Airshipper {
     type Theme = AirshipperTheme;
     type Flags = CmdLine;
 
-    fn new(flags: CmdLine) -> (Self, Command<Message>) {
+    fn new(_flags: CmdLine) -> (Self, Command<Message>) {
         #[cfg(windows)]
         crate::windows::hide_non_inherited_console();
 
         (
-            Airshipper::new(&flags),
-            Command::perform(Self::load(flags.clone()), Message::Loaded),
+            Airshipper::new(Profile::load()),
+            Command::perform(async {}, |_| Message::Loaded),
         )
     }
 
@@ -178,9 +96,7 @@ impl Application for Airshipper {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::Loaded(state) => {
-                *self = state;
-
+            Message::Loaded => {
                 return self
                     .default_view
                     .update(DefaultViewMessage::Query, &self.active_profile)
@@ -192,18 +108,12 @@ impl Application for Airshipper {
             Message::DefaultViewMessage(msg) => {
                 if let DefaultViewMessage::Action(action) = &msg {
                     match action {
-                        Action::Save => {
-                            return Command::perform(
-                                Self::save(self.clone()),
-                                Message::Saved,
-                            );
-                        },
                         Action::UpdateProfile(profile) => {
                             self.active_profile = profile.clone();
                             self.active_profile.reload_wgpu_backends();
 
                             return Command::perform(
-                                Self::save(self.clone()),
+                                Profile::save(self.active_profile.clone()),
                                 Message::Saved,
                             );
                         },
@@ -226,16 +136,10 @@ impl Application for Airshipper {
             Message::UpdateViewMessage(msg) => {
                 if let UpdateViewMessage::Action(action) = &msg {
                     match action {
-                        Action::Save => {
-                            return Command::perform(
-                                Self::save(self.clone()),
-                                Message::Saved,
-                            );
-                        },
                         Action::UpdateProfile(profile) => {
                             self.active_profile = profile.clone();
                             return Command::perform(
-                                Self::save(self.clone()),
+                                Profile::save(self.active_profile.clone()),
                                 Message::Saved,
                             );
                         },

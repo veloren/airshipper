@@ -4,14 +4,10 @@ use crate::{
     consts::{AIRSHIPPER_RELEASE_URL, SUPPORTED_SERVER_API_VERSION},
     gui::{
         style::{button::ButtonStyle, container::ContainerStyle, text::TextStyle},
-        views::{
-            Action,
-            default::{DefaultViewMessage, Interaction},
-        },
+        views::default::{DefaultViewMessage, Interaction},
         widget::*,
     },
     net,
-    profiles::Profile,
 };
 use iced::{
     Alignment, Command, Length,
@@ -23,19 +19,21 @@ use tracing::debug;
 
 #[derive(Clone, Debug)]
 pub enum AnnouncementPanelMessage {
-    UpdateAnnouncement(Result<Option<AnnouncementPanelComponent>>),
+    FetchAnnouncement(Result<AnnouncementPanelComponent>),
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct AnnouncementPanelComponent {
     pub announcement_message: Option<String>,
     pub announcement_last_change: chrono::DateTime<chrono::Utc>,
-    pub api_version: u32,
+    pub api_version: Option<u32>,
 }
 
 impl AnnouncementPanelComponent {
-    #[allow(clippy::while_let_on_iterator)]
-    async fn fetch(profile: &Profile) -> Result<Self> {
+    pub async fn fetch(
+        api_version_url: String,
+        announcement_url: String,
+    ) -> Result<Self> {
         #[derive(Deserialize)]
         pub struct Version {
             version: u32,
@@ -47,11 +45,10 @@ impl AnnouncementPanelComponent {
             last_change: chrono::DateTime<chrono::Utc>,
         }
 
-        let version = net::query(profile.api_version_url())
-            .await?
-            .json::<Version>()
-            .await?;
-        let announcement = net::query(profile.announcement_url())
+        debug!("Announcement fetching...");
+
+        let version = net::query(api_version_url).await?.json::<Version>().await?;
+        let announcement = net::query(announcement_url)
             .await?
             .json::<Announcement>()
             .await?;
@@ -59,23 +56,7 @@ impl AnnouncementPanelComponent {
         Ok(AnnouncementPanelComponent {
             announcement_message: announcement.message,
             announcement_last_change: announcement.last_change,
-            api_version: version.version,
-        })
-    }
-
-    /// Returns new Announcement incase remote one is newer
-    pub async fn update_announcement(
-        profile: Profile,
-        last_change: chrono::DateTime<chrono::Utc>,
-    ) -> Result<Option<Self>> {
-        debug!("Announcement fetching...");
-        let new = Self::fetch(&profile).await?;
-        Ok(if new.announcement_last_change != last_change {
-            debug!("Announcement is newer");
-            Some(new)
-        } else {
-            debug!("Announcement is same as before");
-            None
+            api_version: Some(version.version),
         })
     }
 
@@ -84,17 +65,13 @@ impl AnnouncementPanelComponent {
         msg: AnnouncementPanelMessage,
     ) -> Option<Command<DefaultViewMessage>> {
         match msg {
-            AnnouncementPanelMessage::UpdateAnnouncement(result) => match result {
-                Ok(Some(announcement)) => {
+            AnnouncementPanelMessage::FetchAnnouncement(result) => match result {
+                Ok(announcement) => {
                     *self = announcement;
-                    Some(Command::perform(
-                        async { Action::Save },
-                        DefaultViewMessage::Action,
-                    ))
+                    None
                 },
-                Ok(None) => None,
                 Err(e) => {
-                    tracing::trace!("Failed to update announcement: {}", e);
+                    tracing::trace!("Failed to fetch announcement: {}", e);
                     None
                 },
             },
@@ -102,7 +79,10 @@ impl AnnouncementPanelComponent {
     }
 
     pub fn view(&self) -> Element<DefaultViewMessage> {
-        let update = SUPPORTED_SERVER_API_VERSION != self.api_version;
+        let update = match self.api_version {
+            Some(version) => SUPPORTED_SERVER_API_VERSION != version,
+            None => false,
+        };
         let rowtext = match (update, &self.announcement_message) {
             (false, None) => {
                 return row![].into();

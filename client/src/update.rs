@@ -1,7 +1,7 @@
 use std::{future::Future, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
 
 use crate::{
-    WEB_CLIENT,
+    ClientError, WEB_CLIENT,
     consts::{SERVER_CLI_FILE, VOXYGEN_FILE},
     nix,
     profiles::{PatchedInfo, Profile},
@@ -29,7 +29,7 @@ pub(crate) enum Progress {
     },
     Deleting(ProgressDetails),
     Successful(Profile),
-    Errored(String),
+    Errored(ClientError),
 }
 
 #[derive(Debug)]
@@ -167,10 +167,10 @@ async fn sync(
             },
             remozipsy::Progress::Successful => match final_cleanup(profile).await {
                 Ok(p) => (Progress::Successful(p), State::Finished),
-                Err(e) => (Progress::Errored(e.to_string()), State::Finished),
+                Err(e) => (Progress::Errored(e), State::Finished),
             },
             remozipsy::Progress::Errored(e) => {
-                (Progress::Errored(e.to_string()), State::Finished)
+                (Progress::Errored(e.into()), State::Finished)
             },
         }),
         None => None,
@@ -178,7 +178,7 @@ async fn sync(
 }
 
 // permissions, update params
-async fn final_cleanup(mut profile: Profile) -> Result<Profile, String> {
+async fn final_cleanup(mut profile: Profile) -> Result<Profile, ClientError> {
     if let Some(ref version) = profile.version {
         if let Ok(dir) = std::fs::read_dir(cache_base_path()) {
             for file in dir.flatten() {
@@ -203,24 +203,18 @@ async fn final_cleanup(mut profile: Profile) -> Result<Profile, String> {
         let profile_directory = profile.directory();
 
         // Patch executable files if we are on NixOS
-        if nix::is_nixos().map_err(|e| e.to_string())? {
-            let info = nix::patch(&profile_directory, VOXYGEN_FILE)
-                .map_err(|e| e.to_string())?;
+        if nix::is_nixos()? {
+            let info = nix::patch(&profile_directory, VOXYGEN_FILE)?;
             profile.patched_crc32s.push(info);
-            let info = nix::patch(&profile_directory, SERVER_CLI_FILE)
-                .map_err(|e| e.to_string())?;
+            let info = nix::patch(&profile_directory, SERVER_CLI_FILE)?;
             profile.patched_crc32s.push(info);
         } else {
             let p = |path| async move {
-                let meta = tokio::fs::metadata(&path)
-                    .await
-                    .map_err(|e| e.to_string())?;
+                let meta = tokio::fs::metadata(&path).await?;
                 let mut perm = meta.permissions();
                 perm.set_mode(0o755);
-                tokio::fs::set_permissions(&path, perm)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok::<(), String>(())
+                tokio::fs::set_permissions(&path, perm).await?;
+                Ok::<(), ClientError>(())
             };
 
             tracing::info!("patching unix exec files");

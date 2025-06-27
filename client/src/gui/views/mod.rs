@@ -20,11 +20,9 @@ impl Default for View {
 /// An action requested by the current view
 #[derive(Debug, Clone)]
 pub enum Action {
+    UpdateProfile(Profile),
     #[cfg(windows)] // for now
     SwitchView(View),
-    Save,
-
-    UpdateProfile(Profile),
     #[cfg(windows)]
     LauncherUpdate(self_update::update::Release),
 }

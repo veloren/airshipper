@@ -1,5 +1,5 @@
 use crate::{
-    Result, consts,
+    consts,
     gui::{
         custom_widgets::heading_with_rule,
         rss_feed::{
@@ -15,8 +15,7 @@ use iced::{
     Command, ContentFit, Length,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, Space, button, column, container, image::Handle, row, text, tooltip,
-        tooltip::Position,
+        Image, Space, button, column, container, row, text, tooltip, tooltip::Position,
     },
 };
 use rand::{prelude::SliceRandom, thread_rng};
@@ -45,6 +44,7 @@ pub enum CommunityShowcasePanelMessage {
 impl RssFeedComponent for CommunityShowcaseComponent {
     const IMAGE_HEIGHT: u32 = 180;
     const NAME: &str = "community_showcase";
+    const FEED_URL: &str = consts::COMMUNITY_SHOWCASE_URL;
 
     fn store_feed(&mut self, rss_feed: RssFeedData) {
         self.posts = rss_feed
@@ -64,11 +64,9 @@ impl RssFeedComponent for CommunityShowcaseComponent {
         self.posts.iter_mut().map(|x| &mut x.rss_post).collect()
     }
 
-    fn image_fetched(url: String, result: Result<Handle>) -> DefaultViewMessage {
+    fn rss_feed_message(message: RssFeedComponentMessage) -> DefaultViewMessage {
         DefaultViewMessage::CommunityShowcasePanel(
-            CommunityShowcasePanelMessage::RssUpdate(
-                RssFeedComponentMessage::ImageFetched { url, result },
-            ),
+            CommunityShowcasePanelMessage::RssUpdate(message),
         )
     }
 
@@ -83,21 +81,8 @@ impl CommunityShowcaseComponent {
     // 16:9 Aspect ratio
     const IMAGE_WIDTH: u32 = 320;
 
-    pub fn etag(&self) -> &str {
-        &self.etag
-    }
-
-    /// Returns new Community Showcase Posts in case remote one is newer
-    pub(crate) async fn update_community_posts(
-        local_version: String,
-    ) -> RssFeedUpdateStatus {
-        RssFeedData::update_feed(
-            consts::COMMUNITY_SHOWCASE_URL,
-            local_version,
-            Self::NAME,
-            Self::IMAGE_HEIGHT,
-        )
-        .await
+    pub(crate) async fn load_community_posts() -> RssFeedUpdateStatus {
+        RssFeedData::load_feed(Self::FEED_URL, Self::NAME, Self::IMAGE_HEIGHT).await
     }
 
     pub fn update(

@@ -26,23 +26,17 @@ use iced::{
 #[cfg(windows)]
 use crate::gui::Result;
 
-#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone)]
 pub struct DefaultView {
     changelog_panel_component: ChangelogPanelComponent,
     announcement_panel_component: AnnouncementPanelComponent,
-    #[serde(skip)]
     logo_panel_component: LogoPanelComponent,
     community_showcase_component: CommunityShowcaseComponent,
-    #[serde(skip)]
     game_panel_component: GamePanelComponent,
     news_panel_component: NewsPanelComponent,
-    #[serde(skip)]
     settings_panel_component: SettingsPanelComponent,
-    #[serde(skip)]
     server_browser_panel_component: ServerBrowserPanelComponent,
-    #[serde(skip)]
     show_settings: bool,
-    #[serde(skip)]
     show_server_browser: bool,
 }
 
@@ -176,25 +170,20 @@ impl DefaultView {
             // Will be handled by main view
             DefaultViewMessage::Action(_) => {},
             DefaultViewMessage::Query => {
+                let channel = active_profile.channel.clone();
+                let api_version_url = active_profile.api_version_url();
+                let announcement_url = active_profile.announcement_url();
                 return Command::batch(vec![
+                    Command::perform(NewsPanelComponent::load_news(), |update| {
+                        DefaultViewMessage::NewsPanel(NewsPanelMessage::RssUpdate(
+                            UpdateRssFeed(update),
+                        ))
+                    }),
                     Command::perform(
-                        NewsPanelComponent::update_news(
-                            self.news_panel_component.etag().to_owned(),
-                        ),
-                        |update| {
-                            DefaultViewMessage::NewsPanel(NewsPanelMessage::RssUpdate(
-                                UpdateRssFeed(update),
-                            ))
-                        },
-                    ),
-                    Command::perform(
-                        ChangelogPanelComponent::update_changelog(
-                            self.changelog_panel_component.etag.clone(),
-                            active_profile.channel.clone(),
-                        ),
-                        |update| {
+                        ChangelogPanelComponent::load_changelog(),
+                        move |update| {
                             DefaultViewMessage::ChangelogPanel(
-                                ChangelogPanelMessage::UpdateChangelog(update),
+                                ChangelogPanelMessage::LoadChangelog(update, channel),
                             )
                         },
                     ),
@@ -204,20 +193,18 @@ impl DefaultView {
                         )
                     }),
                     Command::perform(
-                        AnnouncementPanelComponent::update_announcement(
-                            active_profile.clone(),
-                            self.announcement_panel_component.announcement_last_change,
+                        AnnouncementPanelComponent::fetch(
+                            api_version_url,
+                            announcement_url,
                         ),
                         |update| {
                             DefaultViewMessage::AnnouncementPanel(
-                                AnnouncementPanelMessage::UpdateAnnouncement(update),
+                                AnnouncementPanelMessage::FetchAnnouncement(update),
                             )
                         },
                     ),
                     Command::perform(
-                        CommunityShowcaseComponent::update_community_posts(
-                            self.community_showcase_component.etag().to_owned(),
-                        ),
+                        CommunityShowcaseComponent::load_community_posts(),
                         |update| {
                             DefaultViewMessage::CommunityShowcasePanel(
                                 CommunityShowcasePanelMessage::RssUpdate(UpdateRssFeed(

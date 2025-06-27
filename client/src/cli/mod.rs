@@ -8,7 +8,6 @@ mod parse;
 use iced::futures::stream::StreamExt;
 
 use crate::{BASE_PATH, error::ClientError, profiles::LogLevel};
-use gui::Airshipper;
 pub use parse::CmdLine;
 use tracing::level_filters::LevelFilter;
 
@@ -65,42 +64,42 @@ pub fn process() -> Result<()> {
     }
 
     rt.block_on(async {
-        let mut state = Airshipper::load(cmd.clone()).await;
+        let mut profile = Profile::load();
 
         // handle arguments
-        process_arguments(&mut state, cmd.action.unwrap(), cmd.verbose).await?;
+        process_arguments(&mut profile, cmd.action.unwrap(), cmd.verbose).await?;
 
         // Save state
-        state.save_mut().await?;
+        profile.save_ref().await?;
 
         Ok::<(), ClientError>(())
     })
 }
 
 async fn process_arguments(
-    airshipper: &mut Airshipper,
+    profile: &mut Profile,
     action: Action,
     verbose: u8,
 ) -> Result<()> {
-    airshipper.active_profile.log_level = match verbose {
+    profile.log_level = match verbose {
         0 => LogLevel::Default,
         1 => LogLevel::Debug,
         _ => LogLevel::Trace,
     };
 
     match action {
-        Action::Update => update(airshipper, true).await?,
-        Action::Start => start(&mut airshipper.active_profile, None).await?,
+        Action::Update => update(profile, true).await?,
+        Action::Start => start(profile, None).await?,
         Action::Run => {
-            if let Err(e) = update(airshipper, false).await {
+            if let Err(e) = update(profile, false).await {
                 tracing::error!(
                     ?e,
                     "Couldn't update the game, starting installed version."
                 );
             }
-            start(&mut airshipper.active_profile, None).await?
+            start(profile, None).await?
         },
-        Action::Config => config(&mut airshipper.active_profile).await?,
+        Action::Config => config(profile).await?,
         #[cfg(windows)]
         Action::Upgrade => {
             tokio::task::block_in_place(upgrade)?;
@@ -109,7 +108,7 @@ async fn process_arguments(
     Ok(())
 }
 
-async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
+async fn update(profile: &mut Profile, do_not_ask: bool) -> Result<()> {
     use crate::update::{Progress, update};
     use indicatif::{ProgressBar, ProgressStyle};
 
@@ -123,12 +122,12 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
 
     tracing::debug!("start updating");
 
-    let mut stream = update(airshipper.active_profile.clone()).boxed();
+    let mut stream = update(profile.clone()).boxed();
 
     while let Some(progress) = stream.next().await {
         match progress {
             Progress::ReadyToSync { version } => {
-                tracing::debug!(?version, "Updating profile");
+                tracing::debug!(?version);
 
                 if !do_not_ask {
                     tracing::info!("Update found, do you want to update? [Y/n]");
@@ -163,13 +162,13 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
             },
             Progress::Successful(new_profile) => {
                 tracing::debug!("Updating profile");
-                airshipper.active_profile = new_profile;
+                *profile = new_profile;
                 // Save state
-                airshipper.save_mut().await?;
+                profile.save_ref().await?;
                 return Ok(());
             },
             Progress::Errored(e) => {
-                return Err(ClientError::Update(e));
+                return Err(e);
             },
             Progress::Offline => {
                 return Err(ClientError::Custom("No internet connection".to_string()));
@@ -179,7 +178,7 @@ async fn update(airshipper: &mut Airshipper, do_not_ask: bool) -> Result<()> {
     Ok(())
 }
 
-async fn start(profile: &mut Profile, game_server_address: Option<String>) -> Result<()> {
+async fn start(profile: &Profile, game_server_address: Option<String>) -> Result<()> {
     if !profile.installed() {
         tracing::info!("Profile is not installed. Install it via `airshipper update`");
         return Ok(());

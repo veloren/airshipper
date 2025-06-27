@@ -1,5 +1,4 @@
 use crate::{
-    Result,
     assets::POPPINS_LIGHT_FONT,
     consts,
     gui::{
@@ -15,7 +14,7 @@ use crate::{
 use iced::{
     Alignment, Command, ContentFit, Length,
     alignment::{Horizontal, Vertical},
-    widget::{button, column, container, image, image::Handle, scrollable, text},
+    widget::{button, column, container, image, scrollable, text},
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +32,7 @@ pub enum NewsPanelMessage {
 impl RssFeedComponent for NewsPanelComponent {
     const IMAGE_HEIGHT: u32 = 117;
     const NAME: &str = "news";
+    const FEED_URL: &str = consts::NEWS_URL;
 
     fn store_feed(&mut self, rss_feed: RssFeedData) {
         self.posts = rss_feed
@@ -51,29 +51,16 @@ impl RssFeedComponent for NewsPanelComponent {
         self.posts.iter_mut().map(|x| &mut x.rss_post).collect()
     }
 
-    fn image_fetched(url: String, result: Result<Handle>) -> DefaultViewMessage {
-        DefaultViewMessage::NewsPanel(NewsPanelMessage::RssUpdate(
-            RssFeedComponentMessage::ImageFetched { url, result },
-        ))
+    fn rss_feed_message(message: RssFeedComponentMessage) -> DefaultViewMessage {
+        DefaultViewMessage::NewsPanel(NewsPanelMessage::RssUpdate(message))
     }
 }
 impl NewsPanelComponent {
     // 16:9 Aspect ratio
     const IMAGE_WIDTH: u32 = 208;
 
-    pub fn etag(&self) -> &str {
-        &self.etag
-    }
-
-    /// Returns new News in case remote one is newer
-    pub(crate) async fn update_news(local_version: String) -> RssFeedUpdateStatus {
-        RssFeedData::update_feed(
-            consts::NEWS_URL,
-            local_version,
-            Self::NAME,
-            Self::IMAGE_HEIGHT,
-        )
-        .await
+    pub(crate) async fn load_news() -> RssFeedUpdateStatus {
+        RssFeedData::load_feed(Self::FEED_URL, Self::NAME, Self::IMAGE_HEIGHT).await
     }
 
     pub fn update(

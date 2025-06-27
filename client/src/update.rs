@@ -1,4 +1,9 @@
-use std::{future::Future, os::unix::fs::PermissionsExt, path::PathBuf, time::Duration};
+use std::{
+    future::Future,
+    os::unix::fs::PermissionsExt,
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use crate::{
     ClientError, WEB_CLIENT,
@@ -179,19 +184,28 @@ async fn sync(
 
 // permissions, update params
 async fn final_cleanup(mut profile: Profile) -> Result<Profile, ClientError> {
-    if let Some(ref version) = profile.version {
-        if let Ok(dir) = std::fs::read_dir(cache_base_path()) {
-            for file in dir.flatten() {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if file_name != format!("{version}.ron") {
-                        if let Err(e) = std::fs::remove_file(file.path()) {
-                            tracing::error!(
-                                ?e,
-                                "Failed to remove a file from the cache!"
-                            );
-                        }
-                    }
+    // dont error, if cleanup fails
+    const DAYS_14: Duration = Duration::from_secs(14 * 86400);
+    if let (Ok(dir), Some(max_age)) = (
+        std::fs::read_dir(cache_base_path()),
+        SystemTime::now().checked_sub(DAYS_14),
+    ) {
+        for file in dir.flatten() {
+            if let Err(e) = || -> Result<(), Box<dyn std::error::Error>> {
+                let meta = file.metadata()?;
+                if !meta.is_file() {
+                    return Ok(());
                 }
+
+                let time = meta.modified()?;
+                if time < max_age {
+                    std::fs::remove_file(file.path())?;
+                    tracing::info!("removed old cache file: {:?}", file.file_name());
+                }
+
+                Ok(())
+            }() {
+                tracing::warn!(?e, "Failed to cleanup download cache")
             }
         }
     }

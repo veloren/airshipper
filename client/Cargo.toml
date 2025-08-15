@@ -109,7 +109,7 @@ bytesize = "2"
 bytes = "1"
 opener = "0.8"
 dirs = { package = "dirs-next", version = "2.0.0" }
-rand = "0.8.5"
+rand = "0.9"
 chrono = { version = "0.4.22", features = ["serde"] }
 country-parser = "0.1.1"
 

@@ -1,6 +1,6 @@
 use crate::{Context, config::HOOK_TYPE, models::PipelineUpdate, webhook};
 use axum::{
-    Json, async_trait,
+    Json,
     body::Body,
     extract::{FromRequestParts, State},
     http::{Response, StatusCode, request::Parts},
@@ -19,7 +19,6 @@ pub enum AuthError {
     InvalidSecret,
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for GitlabAuthenticated
 where
     S: Send + Sync,

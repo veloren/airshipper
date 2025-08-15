@@ -1,14 +1,11 @@
 use std::{
     future::Future,
-    os::unix::fs::PermissionsExt,
     path::PathBuf,
     time::{Duration, SystemTime},
 };
 
 use crate::{
     ClientError, WEB_CLIENT,
-    consts::{SERVER_CLI_FILE, VOXYGEN_FILE},
-    nix,
     profiles::{PatchedInfo, Profile},
 };
 use futures_util::{Stream, stream};
@@ -214,6 +211,12 @@ async fn final_cleanup(mut profile: Profile) -> Result<Profile, ClientError> {
 
     #[cfg(unix)]
     {
+        use crate::{
+            consts::{SERVER_CLI_FILE, VOXYGEN_FILE},
+            nix,
+        };
+        use std::os::unix::fs::PermissionsExt;
+
         let profile_directory = profile.directory();
 
         // Patch executable files if we are on NixOS

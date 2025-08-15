@@ -61,9 +61,9 @@ impl_from!(remozipsy::Error<
     <remozipsy::tokio::TokioLocalStorage as remozipsy::FileSystem>::Error,
 >, ClientError::GameUpdate);
 #[cfg(windows)]
-impl_from!(self_update::errors::Error, ClientError::UpdateError);
+impl_from!(self_update::errors::Error, ClientError::SelfUpdate);
 #[cfg(windows)]
-impl_from!(semver::Error, ClientError::VersionError);
+impl_from!(semver::Error, ClientError::Version);
 impl_from!(String, ClientError::Custom);
 
 /// Set up panic handler to relay panics to logs file.

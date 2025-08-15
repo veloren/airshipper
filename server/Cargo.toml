@@ -31,7 +31,7 @@ tracing-subscriber = { version = "0.3.7", default-features = false, features = [
 ] }
 tracing-log = "0.2"
 # config handling
-ron = "0.8"
+ron = "0.11"
 regex = "1.10"
 
 axum = "0.7"
@@ -56,10 +56,10 @@ thiserror = "2.0.3"
 # other
 chrono = { version = "0.4.38", features = ["serde"] }
 lazy_static = "1.4.0"
-prometheus = "0.13"
+prometheus = "0.14"
 futures = "0.3.8"
 bytes = "1"
-md5 = "0.7.0"
+md5 = "0.8"
 url = "2.2.2"
 # bundle all the things!
 libsqlite3-sys = { version = "*", features = ["bundled"] }

@@ -182,15 +182,21 @@ async fn get_github_release<'octo, 'r>(
         .await;
 
     match repo_get_result {
-        Ok(release) => Ok(release),
-        Err(octocrab::Error::GitHub {
-            source: GitHubError { message, .. },
-            ..
-        }) if message == "Not Found" => release_handler
-            .create(&github_release_config.github_release)
-            .send()
-            .await
-            .map_err(ProcessError::Octocrab),
-        err => err.map_err(ProcessError::Octocrab),
+        Err(octocrab::Error::GitHub { source, backtrace }) => {
+            let GitHubError { ref message, .. } = *source;
+            if message == "Not Found" {
+                release_handler
+                    .create(&github_release_config.github_release)
+                    .send()
+                    .await
+                    .map_err(ProcessError::Octocrab)
+            } else {
+                Err(ProcessError::Octocrab(octocrab::Error::GitHub {
+                    source,
+                    backtrace,
+                }))
+            }
+        },
+        result => result.map_err(ProcessError::Octocrab),
     }
 }

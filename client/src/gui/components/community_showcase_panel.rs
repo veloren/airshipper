@@ -18,7 +18,7 @@ use iced::{
         Image, Space, button, column, container, row, text, tooltip, tooltip::Position,
     },
 };
-use rand::{prelude::SliceRandom, thread_rng};
+use rand::{prelude::SliceRandom, rng};
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, min};
 
@@ -73,7 +73,7 @@ impl RssFeedComponent for CommunityShowcaseComponent {
     fn after_rss_feed_updated(&mut self) {
         // Shuffle Community Showcase posts each time they're loaded so that users
         // see different posts even if they never click the next/prev buttons.
-        self.posts.shuffle(&mut thread_rng());
+        self.posts.shuffle(&mut rng());
     }
 }
 

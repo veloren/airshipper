@@ -37,9 +37,9 @@ veloren-query-server = { version = "0.1.2", default-features = false, features =
 
 # Cli
 clap = { version = "4.5.21", features = ["cargo", "derive"] }
-indicatif = "0.17"
-rustyline = "15"
-colored = "2.0"
+indicatif = "0.18"
+rustyline = "17"
+colored = "3"
 
 # UI
 iced = { version = "0.12.1", features = [
@@ -72,13 +72,13 @@ reqwest = { version = "0.12.5", default-features = false, features = [
 ] }
 
 # Parsing
-pulldown-cmark = "0.12.2"
+pulldown-cmark = "0.13"
 strip_markdown = "0.2.0"
-html2text = "0.13"
+html2text = "0.15"
 serde = "1.0.116"
 semver = "1"
 rss = "2.0.7"
-ron = "0.8.1"
+ron = "0.11"
 remozipsy = "0.1.0"
 crc32fast = "1.4.2"
 flate2 = "1.0"
@@ -101,15 +101,15 @@ tokio = { version = "1.38", features = [
 ] }
 tokio-stream = { version = "0.1.6", features = ["io-util"] }
 futures-util = "0.3.15"
-derive_more = { version = "1.0.0", features = ["display"] }
+derive_more = { version = "2", features = ["display"] }
 find_folder = "0.3.0"
 lazy_static = "1.4.0"
 thiserror = "2.0.3"
-bytesize = "1.0.1"
+bytesize = "2"
 bytes = "1"
-opener = "0.7.2"
+opener = "0.8"
 dirs = { package = "dirs-next", version = "2.0.0" }
-rand = "0.8.5"
+rand = "0.9"
 chrono = { version = "0.4.22", features = ["serde"] }
 country-parser = "0.1.1"
 
@@ -117,13 +117,13 @@ country-parser = "0.1.1"
 openssl-sys = { version = "0.9", features = ["vendored"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59.0", features = [
+windows-sys = { version = "0.60", features = [
     "Win32_UI",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
     "Win32_System_Threading",
 ] }
-self_update = { version = "0.41.0", features = ["archive-zip"] }
+self_update = { version = "0.42", features = ["archive-zip"] }
 
 [build-dependencies]
 winresource = "0.1.15"

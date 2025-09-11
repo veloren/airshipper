@@ -4,7 +4,7 @@ RUN apt-get update \
     && export DEBIAN_FRONTEND=noninteractive \
     && apt-get install -y --no-install-recommends --assume-yes \
         ca-certificates \
-        librust-backtrace+libserde-dev \
+        librust-backtrace+serde-dev \
         libssl-dev \
     && rm -rf /var/lib/apt/lists/*;
 

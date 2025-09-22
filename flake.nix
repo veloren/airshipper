@@ -58,7 +58,7 @@
 
     makeVoxygenPatcher = pkgs: let
       runtimeLibs = with pkgs; (
-        [libxkbcommon udev alsa-lib stdenv.cc.cc.lib libGL vulkan-loader]
+        [libxkbcommon udev alsa-lib stdenv.cc.cc.lib libGL vulkan-loader wayland wayland-protocols]
         ++ (with xorg; [libxcb libX11 libXrandr libXi libXcursor])
       );
     in

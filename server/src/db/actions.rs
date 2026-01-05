@@ -129,7 +129,7 @@ pub async fn prune(db: &Db) -> Result<(), ServerError> {
 
 async fn artifacts_to_be_pruned(
     con: &mut Transaction<'static, Any>,
-) -> Result<impl Iterator<Item = (i64, String)>, ServerError> {
+) -> Result<impl Iterator<Item = (i64, String)> + use<>, ServerError> {
     // Currently date is a STRING and the order DESC might cause weird effects IF we
     // would store different timezones.
     let query =

@@ -87,14 +87,12 @@ pub fn init(log_path_file: Option<(&Path, &str)>, level: LevelFilter) -> Vec<imp
     if let Some((path, file)) = log_path_file {
         // Clean up log file if possible
         let logfile = path.join(file);
-        if logfile.exists() {
-            if let Ok(count) =
+        if logfile.exists()
+            && let Ok(count) =
                 std::fs::read_to_string(&logfile).map(|x| x.lines().count())
-            {
-                if count > MAX_LOG_LINES {
-                    let _ = std::fs::remove_file(&logfile);
-                }
-            }
+            && count > MAX_LOG_LINES
+        {
+            let _ = std::fs::remove_file(&logfile);
         }
 
         match std::fs::create_dir_all(path) {

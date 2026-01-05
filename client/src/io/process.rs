@@ -10,7 +10,7 @@ use tokio_stream::wrappers::LinesStream;
 /// Returns a stream of stdout/stderr lines of the Process
 pub(crate) fn stream_process(
     cmd: &mut Command,
-) -> Result<impl Stream<Item = ProcessUpdate>, tokio::io::Error> {
+) -> Result<impl Stream<Item = ProcessUpdate> + use<>, tokio::io::Error> {
     // Avoid allocating a console
     #[cfg(windows)]
     cmd.creation_flags(windows_sys::Win32::System::Threading::DETACHED_PROCESS);

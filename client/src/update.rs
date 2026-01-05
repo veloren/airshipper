@@ -83,12 +83,11 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
     let cache_file_parent = cache_base_path();
     let cache_file = cache_file_parent.join(format!("{remote_version}.ron"));
     let mut cache = None;
-    if tokio::fs::create_dir_all(cache_file_parent).await.is_ok() {
-        if let Ok(file_content) = tokio::fs::read_to_string(&cache_file).await {
-            if let Ok(content) = ron::from_str(&file_content) {
-                cache = Some(content);
-            }
-        }
+    if tokio::fs::create_dir_all(cache_file_parent).await.is_ok()
+        && let Ok(file_content) = tokio::fs::read_to_string(&cache_file).await
+        && let Ok(content) = ron::from_str(&file_content)
+    {
+        cache = Some(content);
     };
     let need_save_cache = cache.is_none();
 

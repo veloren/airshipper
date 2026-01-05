@@ -544,30 +544,30 @@ impl GamePanelComponent {
                         .width(Length::Fill),
                 );
 
-                if let GamePanelState::ReadyToPlay = &self.state {
-                    if self.selected_server_browser_address.is_some() {
-                        launch_button = button(
-                            column![]
-                                .align_items(Alignment::Center)
-                                .padding([10, 40])
-                                .push(
-                                    text("Connect to")
-                                        .font(POPPINS_BOLD_FONT)
-                                        .line_height(LineHeight::Absolute(22.into()))
-                                        .size(18)
-                                        .horizontal_alignment(Horizontal::Center)
-                                        .vertical_alignment(Vertical::Center),
-                                )
-                                .push(
-                                    text("selected server")
-                                        .font(POPPINS_BOLD_FONT)
-                                        .line_height(LineHeight::Absolute(22.into()))
-                                        .size(18)
-                                        .horizontal_alignment(Horizontal::Center)
-                                        .vertical_alignment(Vertical::Center),
-                                ),
-                        );
-                    }
+                if let GamePanelState::ReadyToPlay = &self.state
+                    && self.selected_server_browser_address.is_some()
+                {
+                    launch_button = button(
+                        column![]
+                            .align_items(Alignment::Center)
+                            .padding([10, 40])
+                            .push(
+                                text("Connect to")
+                                    .font(POPPINS_BOLD_FONT)
+                                    .line_height(LineHeight::Absolute(22.into()))
+                                    .size(18)
+                                    .horizontal_alignment(Horizontal::Center)
+                                    .vertical_alignment(Vertical::Center),
+                            )
+                            .push(
+                                text("selected server")
+                                    .font(POPPINS_BOLD_FONT)
+                                    .line_height(LineHeight::Absolute(22.into()))
+                                    .size(18)
+                                    .horizontal_alignment(Horizontal::Center)
+                                    .vertical_alignment(Vertical::Center),
+                            ),
+                    );
                 };
 
                 launch_button = launch_button

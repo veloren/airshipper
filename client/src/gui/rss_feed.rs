@@ -125,15 +125,14 @@ pub trait RssFeedComponent {
                 },
             },
             RssFeedComponentMessage::ImageFetched { result, url } => {
-                if let Ok(handle) = result {
-                    if let Some(post) = self
+                if let Ok(handle) = result
+                    && let Some(post) = self
                         .posts_mut()
                         .iter_mut()
                         .filter(|post| post.image_url.is_some())
                         .find(|post| post.image_url.as_ref().unwrap() == &url)
-                    {
-                        post.image = Some(handle);
-                    }
+                {
+                    post.image = Some(handle);
                 }
 
                 None
@@ -250,15 +249,13 @@ impl RssFeedData {
         let futs = feed
             .items()
             .iter()
-            // TODO: Currently we want 15 blog posts and 15 community showcase posts - if this is ever not the case 
+            // TODO: Currently we want 15 blog posts and 15 community showcase posts - if this is ever not the case
             // then this number will need parameterising.
             .take(15)
             .map(move |item| async move {
                 let mut post = RssPost::from(item);
-                if let Some(url) = &post.image_url {
-                    if let Ok(handle) = RssPost::fetch_image(url.to_owned(), name, post.image_cache_name(), height).await {
-                        post.image = Some(handle);
-                    }
+                if let Some(url) = &post.image_url && let Ok(handle) = RssPost::fetch_image(url.to_owned(), name, post.image_cache_name(), height).await {
+                    post.image = Some(handle);
                 };
                 post
             })
@@ -267,10 +264,10 @@ impl RssFeedData {
 
         if let Ok(dir) = std::fs::read_dir(RssPost::cache_base_path(name)) {
             for file in dir.flatten() {
-                if let Ok(file_name) = file.file_name().into_string() {
-                    if !posts.iter().any(|i| i.image_cache_name() == file_name) {
-                        std::fs::remove_file(file.path())?;
-                    }
+                if let Ok(file_name) = file.file_name().into_string()
+                    && !posts.iter().any(|i| i.image_cache_name() == file_name)
+                {
+                    std::fs::remove_file(file.path())?;
                 }
             }
         }

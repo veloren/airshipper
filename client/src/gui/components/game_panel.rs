@@ -233,8 +233,7 @@ impl GamePanelComponent {
                         Some(GamePanelState::Offline(active_profile.installed())),
                         None,
                     ),
-                    Some(Progress::DownloadExtracting { .. })
-                    | Some(Progress::Deleting(_)) => {
+                    Some(Progress::Incomplete { .. }) => {
                         if let GamePanelState::Updating { astate, btnstate } = &self.state
                         {
                             let state = {
@@ -313,7 +312,7 @@ impl GamePanelComponent {
         command
     }
 
-    pub fn view(&self, active_profile: &Profile) -> Element<DefaultViewMessage> {
+    pub fn view(&self, active_profile: &Profile) -> Element<'_, DefaultViewMessage> {
         // TODO: Improve this with actual game version / date (requires changes to
         // Airshipper Server)
         let mut version_string = "Pre-Alpha".to_owned();
@@ -381,7 +380,7 @@ impl GamePanelComponent {
         self.state = state;
     }
 
-    fn download_area(&self) -> Element<DefaultViewMessage> {
+    fn download_area(&self) -> Element<'_, DefaultViewMessage> {
         match &self.state {
             GamePanelState::Updating { btnstate, .. }
                 if *btnstate == DownloadButtonState::InProgress =>
@@ -390,13 +389,21 @@ impl GamePanelComponent {
                 // stats replace the Launch / Update button
                 let (step, percent, total, downloaded, bytes_per_sec, remaining) =
                     match &self.download_progress {
-                        Some(Progress::DownloadExtracting { download, unzip }) => {
-                            let (step, progress) =
-                                match (download.is_finished(), unzip.is_finished()) {
-                                    (false, _) => ("Downloading", &download),
-                                    (true, false) => ("Unzipping", &unzip),
-                                    (true, true) => ("Finalizing", &unzip),
-                                };
+                        Some(Progress::Incomplete {
+                            download,
+                            unzip,
+                            delete,
+                        }) => {
+                            let (step, progress) = match (
+                                download.is_finished(),
+                                unzip.is_finished(),
+                                delete.is_finished(),
+                            ) {
+                                (false, _, _) => ("Downloading", &download),
+                                (true, false, _) => ("Unzipping", &unzip),
+                                (true, true, false) => ("Deleting", &delete),
+                                (true, true, true) => ("Finalizing", &unzip),
+                            };
                             (
                                 step,
                                 progress.percent_complete() as f32,
@@ -406,14 +413,6 @@ impl GamePanelComponent {
                                 progress.time_remaining(),
                             )
                         },
-                        Some(Progress::Deleting(delete)) => (
-                            "Deleting",
-                            delete.percent_complete() as f32,
-                            delete.total_bytes(),
-                            delete.processed_bytes(),
-                            delete.bytes_per_sec(),
-                            delete.time_remaining(),
-                        ),
                         Some(Progress::Successful(_)) => {
                             ("Successful", 100.0, 0, 0, 0, Duration::from_secs(0))
                         },

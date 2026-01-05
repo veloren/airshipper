@@ -25,11 +25,11 @@ pub(crate) enum Progress {
         version: String,
     },
     // Status from remozipsy
-    DownloadExtracting {
+    Incomplete {
         download: ProgressDetails,
         unzip: ProgressDetails,
+        delete: ProgressDetails,
     },
-    Deleting(ProgressDetails),
     Successful(Profile),
     Errored(ClientError),
 }
@@ -160,13 +160,18 @@ async fn sync(
 ) -> Option<(Progress, State)> {
     match statemachine.progress().await {
         Some((p, s)) => Some(match p {
-            remozipsy::Progress::DownloadExtracting { download, unzip } => (
-                Progress::DownloadExtracting { download, unzip },
+            remozipsy::Progress::Incomplete {
+                download,
+                unzip,
+                delete,
+            } => (
+                Progress::Incomplete {
+                    download,
+                    unzip,
+                    delete,
+                },
                 State::Sync(profile, s),
             ),
-            remozipsy::Progress::Deleting(deleting) => {
-                (Progress::Deleting(deleting), State::Sync(profile, s))
-            },
             remozipsy::Progress::Successful => match final_cleanup(profile).await {
                 Ok(p) => (Progress::Successful(p), State::Finished),
                 Err(e) => (Progress::Errored(e), State::Finished),

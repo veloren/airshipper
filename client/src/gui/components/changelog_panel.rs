@@ -312,7 +312,7 @@ impl ChangelogPanelComponent {
         }
     }
 
-    pub fn view(&self) -> Element<DefaultViewMessage> {
+    pub fn view(&self) -> Element<'_, DefaultViewMessage> {
         let mut changelog = column![].spacing(10);
 
         for version in &mut self.versions.iter().take(self.display_count) {
@@ -410,7 +410,7 @@ pub struct ChangelogVersion {
 }
 
 impl ChangelogVersion {
-    pub fn view(&self) -> Element<DefaultViewMessage> {
+    pub fn view(&self) -> Element<'_, DefaultViewMessage> {
         let version_string = match &self.date {
             Some(date) => format!("v{} ({})", self.version, date),
             None => match self.version.as_str() {

@@ -120,7 +120,7 @@ impl ServerBrowserPanelComponent {
         }))
     }
 
-    pub fn view(&self) -> Element<DefaultViewMessage> {
+    pub fn view(&self) -> Element<'_, DefaultViewMessage> {
         let top_row = row![].height(Length::Fixed(50.0)).push(
             column![].push(container(
                 row![]

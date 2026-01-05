@@ -158,7 +158,7 @@ impl Application for Airshipper {
         Command::none()
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
         let Self {
             view, default_view, ..
         } = self;

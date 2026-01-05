@@ -138,26 +138,26 @@ async fn update(profile: &mut Profile, do_not_ask: bool) -> Result<()> {
                     }
                 }
             },
-            Progress::DownloadExtracting { download, unzip } => {
-                let (step, progress) = match (download.is_finished(), unzip.is_finished())
-                {
-                    (false, _) => ("Downloading", &download),
-                    (true, false) => ("Unzipping", &unzip),
-                    (true, true) => ("Finalizing", &unzip),
+            Progress::Incomplete {
+                download,
+                unzip,
+                delete,
+            } => {
+                let (step, progress) = match (
+                    download.is_finished(),
+                    unzip.is_finished(),
+                    delete.is_finished(),
+                ) {
+                    (false, _, _) => ("Downloading", &download),
+                    (true, false, _) => ("Unzipping", &unzip),
+                    (true, true, false) => ("Deleting", &delete),
+                    (true, true, true) => ("Finalizing", &unzip),
                 };
                 progress_bar.set_position(progress.percent_complete());
                 progress_bar.set_message(format!(
                     "{} / {} ({step})",
                     pretty_bytes(progress.processed_bytes()),
                     pretty_bytes(progress.total_bytes()),
-                ));
-            },
-            Progress::Deleting(delete) => {
-                progress_bar.set_position(delete.percent_complete());
-                progress_bar.set_message(format!(
-                    "{} / {} (Deleting)",
-                    pretty_bytes(delete.processed_bytes()),
-                    pretty_bytes(delete.total_bytes()),
                 ));
             },
             Progress::Successful(new_profile) => {

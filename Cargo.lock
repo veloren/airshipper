@@ -3658,6 +3658,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
+name = "path-clean"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
+
+[[package]]
 name = "pem"
 version = "3.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4256,17 +4262,17 @@ checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
 
 [[package]]
 name = "remozipsy"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0dd616e96a9ad1bb69779153a42b52da2f241563b73f6c28de46e4c4974898f"
+checksum = "0fceed57e70f8ae09f370278bea4f6fc81a44a5164c022214dca79bb00bf2eb2"
 dependencies = [
  "bytes",
  "crc32fast",
  "flate2",
  "futures-lite",
  "http",
+ "path-clean",
  "reqwest",
- "rustversion",
  "serde",
  "thiserror 2.0.16",
  "tokio",

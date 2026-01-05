@@ -1,4 +1,3 @@
-#![feature(extract_if)]
 mod assets;
 mod channels;
 mod cli;

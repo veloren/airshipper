@@ -7,15 +7,10 @@ use iced::{
     },
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum RuleStyle {
+    #[default]
     Default,
-}
-
-impl Default for RuleStyle {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 impl rule::StyleSheet for AirshipperTheme {

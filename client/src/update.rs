@@ -35,7 +35,7 @@ pub(crate) enum Progress {
 }
 
 #[derive(Debug)]
-#[allow(private_interfaces)]
+#[expect(clippy::large_enum_variant)]
 pub(super) enum State {
     ToBeEvaluated(Profile),
     Sync(

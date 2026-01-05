@@ -7,15 +7,10 @@ use iced::{
     },
 };
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum PickListStyle {
+    #[default]
     Default,
-}
-
-impl Default for PickListStyle {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 impl pick_list::StyleSheet for AirshipperTheme {

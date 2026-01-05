@@ -6,14 +6,10 @@ use iced::{
     widget::{text_input, text_input::Appearance},
 };
 
+#[derive(Default)]
 pub enum TextInputStyle {
+    #[default]
     Default,
-}
-
-impl Default for TextInputStyle {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 impl text_input::StyleSheet for AirshipperTheme {

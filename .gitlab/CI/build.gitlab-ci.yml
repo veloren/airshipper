@@ -1,6 +1,7 @@
 #linux, windows, macos builds here as template
 .tlinux:
   image: registry.gitlab.com/veloren/veloren-docker-ci/base/linux-x86_64:${CACHE_IMAGE_TAG}
+  timeout: 2h
   script:
     - cargo build --release -p airshipper --all-features
     - cargo build --release -p airshipper-server --all-features
@@ -17,6 +18,7 @@
 
 .twindows:
   image: registry.gitlab.com/veloren/veloren-docker-ci/base/windows-x86_64:${CACHE_IMAGE_TAG}
+  timeout: 2h
   script:
     - cargo build --target=x86_64-pc-windows-gnu --release -p airshipper --all-features
     - cargo build --target=x86_64-pc-windows-gnu --release -p airshipper-server --all-features
@@ -31,6 +33,7 @@
 
 .twindows-installer:
   image: registry.gitlab.com/veloren/veloren-docker-ci/base/windows-x86_64:${CACHE_IMAGE_TAG}
+  timeout: 2h
   dependencies:
     - windows-x86_64
   script:
@@ -45,6 +48,7 @@
 
 .tmacos:
   tags: ["veloren-macos"]
+  timeout: 2h
   before_script:
     - source $HOME/.cargo/env
     - cargo --version

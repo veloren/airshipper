@@ -1,5 +1,6 @@
 code-quality:
   stage: check
+  timeout: 2h
   except:
     - master
   image: registry.gitlab.com/veloren/veloren-docker-ci/cache/quality:${CACHE_IMAGE_TAG}

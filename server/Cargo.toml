@@ -16,33 +16,28 @@ bundled = ["openssl-sys"]
 
 [dependencies]
 tokio-util = { version = "0.7.8", features = ["codec"] }
-tokio = { version = "1.39", features = ["fs", "rt-multi-thread"] }
+tokio = { workspace = true }
+futures = "0.3.8"
 # logging
-termcolor = "1.4"
-tracing = { version = "0.1.21", features = ["log"] }
-tracing-appender = "0.2.0"
-tracing-subscriber = { version = "0.3.7", default-features = false, features = [
-    "env-filter",
-    "fmt",
-    "time",
-    "ansi",
-    "smallvec",
-    "tracing-log",
-] }
-tracing-log = "0.2"
+termcolor = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-log = { workspace = true }
 # config handling
-ron = "0.11"
-regex = "1.10"
+ron = { workspace = true }
+regex = { workspace = true }
 
 axum = "0.8"
 tower-http = { version = "0.6.2", features = ["fs"] }
 # Networking
-reqwest = { version = "0.12", features = ["stream"] }
+reqwest = { workspace = true, features = ["stream"] }
+url = { workspace = true }
 # Github
 octocrab = { version = "0.44" }
 # Serialising/Deserialising
-serde = { version = "1.0.105", features = ["derive"] }
-serde_json = "1.0.59"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 # Database
 sqlx = { version = "0.8.1", features = [
     "runtime-tokio",
@@ -52,15 +47,13 @@ sqlx = { version = "0.8.1", features = [
     "any",
 ] }
 # Error handling
-thiserror = "2.0.3"
+thiserror = { workspace = true }
 # other
-chrono = { version = "0.4.38", features = ["serde"] }
-lazy_static = "1.4.0"
+chrono = { workspace = true }
+lazy_static = { workspace = true }
 prometheus = "0.14"
-futures = "0.3.8"
-bytes = "1"
+bytes = { workspace = true }
 md5 = "0.8"
-url = "2.2.2"
 # bundle all the things!
 libsqlite3-sys = { version = "*", features = ["bundled"] }
 openssl-sys = { version = "*", features = ["vendored"], optional = true }

@@ -172,7 +172,6 @@ async fn upload_to_github_release(
 
 ///Gets the github release set in config if the release exists, otherwise creates and
 /// returns it.
-#[expect(clippy::needless_lifetimes)]
 async fn get_github_release<'octo, 'r>(
     release_handler: &ReleasesHandler<'octo, 'r>,
     github_release_config: &'r GithubReleaseConfig,

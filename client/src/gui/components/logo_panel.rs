@@ -18,7 +18,7 @@ use iced::{
 pub struct LogoPanelComponent {}
 
 impl LogoPanelComponent {
-    pub fn view(&self) -> Element<DefaultViewMessage> {
+    pub fn view(&self) -> Element<'_, DefaultViewMessage> {
         let col = column![]
             .push(Image::new(Handle::from_memory(VELOREN_LOGO.to_vec())))
             .push(

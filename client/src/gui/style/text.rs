@@ -6,20 +6,15 @@ use iced::{
     widget::{text, text::Appearance},
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum TextStyle {
+    #[default]
     Normal,
     Dark,
     LightGrey,
     BrightOrange,
     TomatoRed,
     Lilac,
-}
-
-impl Default for TextStyle {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl text::StyleSheet for AirshipperTheme {

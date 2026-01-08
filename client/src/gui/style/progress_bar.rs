@@ -4,14 +4,10 @@ use iced::{
     widget::{progress_bar, progress_bar::Appearance},
 };
 
+#[derive(Default)]
 pub enum ProgressBarStyle {
+    #[default]
     Default,
-}
-
-impl Default for ProgressBarStyle {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 impl progress_bar::StyleSheet for AirshipperTheme {

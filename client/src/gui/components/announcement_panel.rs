@@ -78,7 +78,7 @@ impl AnnouncementPanelComponent {
         }
     }
 
-    pub fn view(&self) -> Element<DefaultViewMessage> {
+    pub fn view(&self) -> Element<'_, DefaultViewMessage> {
         let update = match self.api_version {
             Some(version) => SUPPORTED_SERVER_API_VERSION != version,
             None => false,

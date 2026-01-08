@@ -72,7 +72,7 @@ impl NewsPanelComponent {
         }
     }
 
-    pub(crate) fn view(&self) -> Element<DefaultViewMessage> {
+    pub(crate) fn view(&self) -> Element<'_, DefaultViewMessage> {
         let mut news = column![].spacing(20).padding(20);
 
         for post in &self.posts {
@@ -92,7 +92,7 @@ pub struct NewsPost {
 }
 
 impl NewsPost {
-    pub(crate) fn view(&self) -> Element<DefaultViewMessage> {
+    pub(crate) fn view(&self) -> Element<'_, DefaultViewMessage> {
         let post = &self.rss_post;
 
         let image_container = if let Some(handle) = &post.image {

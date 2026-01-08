@@ -5,7 +5,7 @@
 
 !define APP_NAME "Airshipper"
 !define COMP_NAME "Airshipper contributors"
-!define VERSION "0.16.0.0" # Updated by update_installer_version.sh during CI
+!define VERSION "0.17.0.0" # Updated by update_installer_version.sh during CI
 !define COPYRIGHT "Veloren contributors"
 !define DESCRIPTION "Provides automatic updates for the voxel RPG Veloren."
 !define INSTALLER_NAME "airshipper-installer.exe"

@@ -30,3 +30,56 @@ debug = 1
 
 [workspace.metadata.nix]
 systems = ["x86_64-linux"]
+
+### DEPENDENCIES ###
+
+[workspace.dependencies]
+# Cli
+clap = { version = "4.5.21", features = ["cargo", "derive"] }
+indicatif = "0.18"
+rustyline = "17"
+colored = "3"
+
+# Logging
+tracing = { version = "0.1.21", features = ["log"] }
+tracing-futures = "0.2.4"
+tracing-subscriber = { version = "0.3.7", default-features = false, features = [
+    "env-filter",
+    "fmt",
+    "time",
+    "ansi",
+    "smallvec",
+    "tracing-log",
+] }
+termcolor = "1.4"
+tracing-appender = "0.2.0"
+tracing-log = "0.2.0"
+regex = "1.10"
+
+# Networking
+reqwest = { version = "0.12.5", default-features = false, features = [
+    "rustls-tls",
+    "http2",
+] }
+
+# Parsing
+strip_markdown = "0.2.0"
+html2text = "0.15"
+serde = { version = "1.0.116", features = ["derive"] }
+serde_json = "1.0.59"
+ron = "0.12"
+url = "2.2.2"
+
+# Other
+tokio = { version = "1.39", features = [
+    "fs",
+    "rt-multi-thread",
+] }
+derive_more = { version = "2", features = ["display"] }
+find_folder = "0.3.0"
+lazy_static = "1.4.0"
+thiserror = "2.0.3"
+bytesize = "2"
+bytes = "1"
+dirs = { package = "dirs-next", version = "2.0.0" }
+chrono = { version = "0.4.38", features = ["serde"] }

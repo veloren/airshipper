@@ -48,6 +48,7 @@
 
 .tmacos:
   tags: ["saas-macos-large-m2pro"]
+  image: macos-15-xcode-16
   timeout: 2h
   before_script:
     - source $HOME/.cargo/env
@@ -159,13 +160,11 @@ opt-macos-x86_64:
   extends:
     - .tmacos
     - .tnon-master-optional
-  tags: ["veloren/*:macos", "build"]
 
 opt-macos-aarch64:
   extends:
     - .tmacos-aarch64
     - .tnon-master-optional
-  tags: ["veloren/*:macos", "build"]
 
 opt-windows-x86_64:
   extends:

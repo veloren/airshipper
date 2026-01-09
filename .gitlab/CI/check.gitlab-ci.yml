@@ -4,7 +4,7 @@ code-quality:
   except:
     - master
   image: registry.gitlab.com/veloren/veloren-docker-ci/cache/quality:${CACHE_IMAGE_TAG}
-  tags: ["saas-linux-large-amd64"]
+  tags: ["veloren/*", "check"]
   script:
     - cargo clippy --all-targets --locked --all-features -- -D warnings
     - cargo fmt --all -- --check

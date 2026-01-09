@@ -103,7 +103,6 @@ macos-x86_64:
   artifacts:
     reports:
       dotenv: macos_x86_64_job_id.env
-  tags: ["veloren/*:macos", "build", "publish", "trusted"]
 
 macos-aarch64:
   extends:
@@ -115,7 +114,6 @@ macos-aarch64:
   artifacts:
     reports:
       dotenv: macos_aarch64_job_id.env
-  tags: ["veloren/*:macos", "build", "publish", "trusted"]
 
 windows-x86_64:
   extends:

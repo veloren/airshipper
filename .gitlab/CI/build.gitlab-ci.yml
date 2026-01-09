@@ -46,15 +46,41 @@
       - airshipper-installer.exe
     expire_in: 1 week
 
+# macOS.
+# Use a YAML anchor to allow the same before_script to be used in both .build-macos-x86_64 and .build-macos-aarch64.
+# https://docs.gitlab.com/ee/ci/yaml/yaml_optimization.html#yaml-anchors-for-scripts
+.build-macos-install-script: &build-macos-install-script
+  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y;
+  - wget -q https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-macos-universal.tar.gz;
+  - tar -xzf cmake-3.31.8-macos-universal.tar.gz;
+  - ls -la cmake-3.31.8-macos-universal/CMake.app/Contents;
+  - sudo cp -r cmake-3.31.8-macos-universal/CMake.app/Contents/bin/* /usr/local/bin/;
+  - sudo cp -r cmake-3.31.8-macos-universal/CMake.app/Contents/share/* /usr/local/share/;
+  - which cmake;
+  - cmake --version;
+
+.build-macos-before-script: &build-macos-before-script
+  - source ${HOME}/.cargo/env;
+  - cargo --version;
+  - rustup toolchain list;
+  - export DISABLE_GIT_LFS_CHECK=true;
+  - export VELOREN_ASSETS="$(pwd)/assets";
+  - echo "VELOREN_ASSETS=${VELOREN_ASSETS}";
+  - export RUSTFLAGS="-D warnings";
+  - export CARGO_INCREMENTAL=0;
+
 .tmacos:
   tags: ["saas-macos-large-m2pro"]
   image: macos-15-xcode-16
   timeout: 2h
   before_script:
-    - source $HOME/.cargo/env
-    - cargo --version
-    - export DISABLE_GIT_LFS_CHECK=true
-    - export RUSTFLAGS="-D warnings"
+    - *build-macos-install-script
+    # Using fat LTO on macos_x86_64 caused timeouts in the build pipeline,
+    # overriding it to thin here fixes this.
+    - export PROFILE="release-thinlto";
+    - *build-macos-before-script
+    - rustup target add x86_64-apple-darwin;
+    - export RUST_TARGET="x86_64-apple-darwin";
   script:
     - export MACOSX_DEPLOYMENT_TARGET="10.13"
     - cargo build --release -p airshipper --all-features
@@ -74,8 +100,11 @@
   extends:
     - .tmacos
   before_script:
-    - source $HOME/.cargo/env
-    - export RUST_TARGET="aarch64-apple-darwin"
+    - *build-macos-install-script
+    - export PROFILE="release";
+    - *build-macos-before-script
+    - rustup target add aarch64-apple-darwin;
+    - export RUST_TARGET="aarch64-apple-darwin";
 
 # Builds for release - all of these export their $CI_JOB_ID to a report artifact that
 # is used by the gitlab_release step to include their artifacts in the resulting release

@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Changed
 
+## Fixed
+
+## [0.17.0] - 2026-01-08
+
+## Added
+
+## Changed
+
 - The update mechanism has been rewritten to optimize for speed by increasing parallelism.
 
 ## Fixed
@@ -231,7 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added GUI
 
-[unreleased]: https://github.com/veloren/Airshipper/compare/v0.15.0...master
+[unreleased]: https://gitlab.com/veloren/airshipper/-/compare?from=v0.17.0&to=master
 [0.2.0]: https://github.com/veloren/Airshipper/releases/tag/v0.2.0
 [0.2.1]: https://github.com/veloren/Airshipper/releases/tag/v0.2.1
 [0.3.0]: https://github.com/veloren/Airshipper/releases/tag/v0.3.0
@@ -252,3 +260,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [0.14.0]: https://github.com/veloren/Airshipper/releases/tag/v0.14.0
 [0.15.0]: https://github.com/veloren/Airshipper/releases/tag/v0.15.0
 [0.16.0]: https://github.com/veloren/Airshipper/releases/tag/v0.16.0
+[0.17.0]: https://gitlab.com/veloren/airshipper/-/tags/v0.17.0

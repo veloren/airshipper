@@ -1,8 +1,7 @@
 [package]
 name = "airshipper"
 description = "Provides automatic updates for the voxel RPG Veloren."
-version = "0.16.0"
-authors = ["Songtronix <contact@songtronix.com>"]
+version = "0.17.0"
 edition = "2024"
 publish = true
 default-run = "airshipper"

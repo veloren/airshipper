@@ -1,7 +1,6 @@
 [package]
 name = "airshipper-server"
-version = "0.16.0"
-authors = ["Songtronix <contact@songtronix.com>"]
+version = "0.17.0"
 edition = "2024"
 publish = false
 

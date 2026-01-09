@@ -43,7 +43,7 @@ pub enum UpdateViewMessage {
 }
 
 impl UpdateView {
-    pub fn view(&self) -> Element<UpdateViewMessage> {
+    pub fn view(&self) -> Element<'_, UpdateViewMessage> {
         // Contains everything
         let content = column![]
             .align_items(Alignment::Center)

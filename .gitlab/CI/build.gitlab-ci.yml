@@ -47,7 +47,7 @@
     expire_in: 1 week
 
 .tmacos:
-  tags: ["veloren-macos"]
+  tags: ["saas-macos-large-m2pro"]
   timeout: 2h
   before_script:
     - source $HOME/.cargo/env

@@ -92,14 +92,14 @@ flatpak:
   stage: publish
   environment: production
   image:
-    name: debian:bookworm-slim
+    name: debian:forky-slim
     entrypoint: [""]
   tags: ["veloren/*", "publish", "trusted"]
   before_script:
     - echo "" # Override before_script in .gitlab-ci.yml
   script:
     - apt-get update
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak-builder python3 python3-yaml python3-toml python3-aiohttp jq yq curl git
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak-builder python3 python3-yaml python3-tomlkit python3-aiohttp jq yq curl git
     - flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
     - rm -r net.veloren.airshipper || echo ""
     - rm -r flatpak-builder-tools || echo ""

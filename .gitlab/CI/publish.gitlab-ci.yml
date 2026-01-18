@@ -99,12 +99,15 @@ flatpak:
     - echo "" # Override before_script in .gitlab-ci.yml
   script:
     - apt-get update
-    - DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak-builder python3 python3-yaml python3-tomlkit python3-aiohttp jq yq curl git
+    - DEBIAN_FRONTEND=noninteractive apt-get install -y flatpak-builder python3 python3-venv jq yq curl git
     - flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
     - rm -r net.veloren.airshipper || echo ""
     - rm -r flatpak-builder-tools || echo ""
     - git clone "https://${VELOREN_BOT_ACCESS_TOKEN}@github.com/flathub/net.veloren.airshipper.git"
     - git clone https://github.com/flatpak/flatpak-builder-tools.git
+    - export VENV="${PWD}/flatpak-builder-tools/cargo/.venv"
+    - python3 -m venv "${VENV}"
+    - '"${VENV}/bin/pip3" install flatpak-builder-tools/cargo'
     - export RUST_TOOLCHAIN=$(cat rust-toolchain | tail -c 11)
     - cd net.veloren.airshipper
     - export RUST_AARCH64="https://static.rust-lang.org/dist/${RUST_TOOLCHAIN}/rust-nightly-aarch64-unknown-linux-gnu.tar.xz"
@@ -119,7 +122,7 @@ flatpak:
     - yq -i -Y ".modules[0].sources[1].sha256 = \"${RUST_X64_SHA256}\"" net.veloren.airshipper.yaml
     - yq -i -Y ".modules[1].sources[0].url = \"${AIRSHIPPER_SOURCE}\"" net.veloren.airshipper.yaml
     - yq -i -Y ".modules[1].sources[0].sha256 = \"${AIRSHIPPER_SOURCE_SHA256}\"" net.veloren.airshipper.yaml
-    - ../flatpak-builder-tools/cargo/flatpak-cargo-generator.py --output generated-sources.json ../Cargo.lock
+    - '"${VENV}/bin/python3" ../flatpak-builder-tools/cargo/flatpak-cargo-generator.py --output generated-sources.json ../Cargo.lock'
     - git status
     - git diff net.veloren.airshipper.yaml | cat
     - git config user.email "veloren-bot@veloren.net"

@@ -1,5 +1,6 @@
 [Desktop Entry]
 Name=Veloren
+Type=Application
 NoDisplay=true
 Exec=airshipper
 Icon=net.veloren.airshipper

@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Veloren
+NoDisplay=true
+Exec=airshipper
+Icon=net.veloren.airshipper
+StartupWMClass=net.veloren.veloren

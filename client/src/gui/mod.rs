@@ -48,6 +48,8 @@ pub struct Airshipper {
 }
 
 impl Airshipper {
+    const APP_ID: &'static str = "net.veloren.airshipper";
+
     pub fn new(active_profile: Profile) -> Self {
         Self {
             view: View::default(),
@@ -192,23 +194,31 @@ fn settings(cmd: CmdLine) -> Settings<CmdLine> {
     use iced::window::{Settings as Window, icon};
     let icon = image::load_from_memory(crate::assets::VELOREN_ICON).unwrap();
 
+    #[cfg_attr(not(target_os = "linux"), expect(unused_mut))]
+    let mut window_settings = Window {
+        size: Size::new(1050.0, 720.0),
+        resizable: true,
+        decorations: true,
+        icon: Some(
+            icon::from_rgba(icon.to_rgba8().into_raw(), icon.width(), icon.height())
+                .unwrap(),
+        ),
+        min_size: Some(Size::new(400.0, 250.0)),
+        ..Default::default()
+    };
+
+    #[cfg(target_os = "linux")]
+    {
+        window_settings.platform_specific.application_id = Airshipper::APP_ID.to_string();
+    }
+
     Settings {
-        window: Window {
-            size: Size::new(1050.0, 720.0),
-            resizable: true,
-            decorations: true,
-            icon: Some(
-                icon::from_rgba(icon.to_rgba8().into_raw(), icon.width(), icon.height())
-                    .unwrap(),
-            ),
-            min_size: Some(Size::new(400.0, 250.0)),
-            ..Default::default()
-        },
+        window: window_settings,
         flags: cmd,
         default_font: crate::assets::POPPINS_FONT,
         default_text_size: 20.0.into(),
         antialiasing: true,
-        id: Some("airshipper".to_string()),
+        id: Some(Airshipper::APP_ID.to_string()),
         fonts: vec![
             #[cfg(feature = "bundled_font")]
             Cow::Borrowed(UNIVERSAL_FONT_BYTES),

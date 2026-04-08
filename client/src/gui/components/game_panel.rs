@@ -41,7 +41,7 @@ use tracing::debug;
 #[derive(Debug, Clone)]
 pub enum GamePanelMessage {
     ProcessUpdate(ProcessUpdate),
-    DownloadProgress(Option<Progress>),
+    DownloadProgress(Box<Option<Progress>>),
     PlayPressed,
     ServerBrowserServerChanged(Option<String>),
     StartUpdate,
@@ -61,7 +61,7 @@ pub enum GamePanelState {
         btnstate: DownloadButtonState,
     },
     ReadyToPlay,
-    Playing(Profile),
+    Playing(Box<Profile>),
     Offline(bool),
     Retry,
 }
@@ -99,7 +99,7 @@ impl GamePanelComponent {
     pub fn subscription(&self) -> iced::Subscription<GamePanelMessage> {
         match &self.state {
             GamePanelState::Playing(profile) => subscriptions::process::stream(
-                profile.clone(),
+                profile.as_ref().clone(),
                 self.selected_server_browser_address.clone(),
             )
             .map(GamePanelMessage::ProcessUpdate),
@@ -146,7 +146,7 @@ impl GamePanelComponent {
                 },
                 |progress| {
                     DefaultViewMessage::GamePanel(GamePanelMessage::DownloadProgress(
-                        progress,
+                        Box::new(progress),
                     ))
                 },
             )),
@@ -160,9 +160,10 @@ impl GamePanelComponent {
     ) -> Option<Command<DefaultViewMessage>> {
         let (next_state, command) = match msg {
             GamePanelMessage::PlayPressed => match &self.state {
-                GamePanelState::ReadyToPlay => {
-                    (Some(GamePanelState::Playing(active_profile.clone())), None)
-                },
+                GamePanelState::ReadyToPlay => (
+                    Some(GamePanelState::Playing(Box::new(active_profile.clone()))),
+                    None,
+                ),
                 GamePanelState::Retry => (
                     None,
                     Some(Command::perform(async {}, |_| {
@@ -172,9 +173,12 @@ impl GamePanelComponent {
                 GamePanelState::Offline(available) => {
                     match available {
                         // Play offline
-                        true => {
-                            (Some(GamePanelState::Playing(active_profile.clone())), None)
-                        },
+                        true => (
+                            Some(GamePanelState::Playing(Box::new(
+                                active_profile.clone(),
+                            ))),
+                            None,
+                        ),
                         // Retry
                         false => {
                             // The game has never been downloaded so the only option is to
@@ -214,7 +218,7 @@ impl GamePanelComponent {
                 Self::trigger_next_state(state, astate, DownloadButtonState::Checking)
             },
             GamePanelMessage::DownloadProgress(progress) => {
-                let next = match &progress {
+                let next = match &progress.as_ref() {
                     Some(Progress::Errored(e)) => {
                         tracing::error!("Download failed with: {e}");
                         (Some(GamePanelState::Retry), None)
@@ -272,7 +276,7 @@ impl GamePanelComponent {
                     },
                     None => (None, None),
                 };
-                self.download_progress = progress;
+                self.download_progress = progress.as_ref().clone();
                 next
             },
             // TODO: Move this out of GamePanelComponent? This code handles redirecting

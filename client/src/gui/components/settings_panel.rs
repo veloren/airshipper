@@ -27,6 +27,7 @@ use tracing::debug;
 
 #[derive(Clone, Debug)]
 pub enum SettingsPanelMessage {
+    WgpuGraphicsDeviceChanged(profiles::WgpuDevice),
     LogLevelChanged(profiles::LogLevel),
     ServerChanged(profiles::Server),
     ChannelChanged(Channel),
@@ -49,6 +50,14 @@ impl SettingsPanelComponent {
         active_profile: &Profile,
     ) -> Option<Command<DefaultViewMessage>> {
         match msg {
+            SettingsPanelMessage::WgpuGraphicsDeviceChanged(new_device) => {
+                let mut profile = active_profile.clone();
+                profile.wgpu_device = new_device;
+                Some(Command::perform(
+                    async { Action::UpdateProfile(profile) },
+                    DefaultViewMessage::Action,
+                ))
+            },
             SettingsPanelMessage::ServerChanged(new_server) => {
                 tracing::debug!("new server selected {}", new_server);
                 let mut profile = active_profile.clone();
@@ -135,6 +144,41 @@ impl SettingsPanelComponent {
         const PICK_LIST_PADDING: u16 = 7;
         const FONT_SIZE: u16 = 12;
 
+        let graphics_device = column![]
+            .spacing(5)
+            .push(
+                container(text("GRAPHICS DEVICE").size(10).style(TextStyle::LightGrey))
+                    .padding([0, 0, 0, 3]),
+            )
+            .push(
+                tooltip(
+                    container(
+                        pick_list(
+                            active_profile.supported_wgpu_devices.as_slice(),
+                            Some(active_profile.wgpu_device.clone()),
+                            |x| {
+                                DefaultViewMessage::SettingsPanel(
+                                    SettingsPanelMessage::WgpuGraphicsDeviceChanged(x),
+                                )
+                            },
+                        )
+                        .text_size(FONT_SIZE)
+                        .padding(PICK_LIST_PADDING)
+                        .width(Length::Fill),
+                    )
+                    .height(Length::Fixed(30.0)),
+                    text(
+                        "The graphics device that the game will use. \nLeave on Auto \
+                         unless you are experiencing issues",
+                    )
+                    .size(14),
+                    Position::Bottom,
+                )
+                .style(ContainerStyle::Tooltip)
+                .gap(5),
+            )
+            .width(Length::FillPortion(1));
+
         let graphics_mode = column![]
             .spacing(5)
             .push(
@@ -159,7 +203,7 @@ impl SettingsPanelComponent {
                     )
                     .height(Length::Fixed(30.0)),
                     text(
-                        "The rendering backend that the game will use. \nLeave on Auto \
+                        "The rendering backend that the game will use.\nLeave on Auto \
                          unless you are experiencing issues",
                     )
                     .size(14),
@@ -372,26 +416,33 @@ impl SettingsPanelComponent {
             row![]
                 .spacing(10)
                 .align_items(Alignment::End)
+                .push(graphics_device),
+        );
+
+        let second_row = container(
+            row![]
+                .spacing(10)
+                .align_items(Alignment::End)
                 .push(graphics_mode)
                 .push(log_level)
                 .push(server_picker),
         );
 
-        let second_row =
-            container(row![].spacing(10).push(env_vars).push(channel_picker));
+        let third_row = container(row![].spacing(10).push(env_vars).push(channel_picker));
 
-        let third_row =
+        let fourth_row =
             container(row![].align_items(Alignment::End).push(assets_override));
 
         let col = column![]
             .spacing(10)
             .push(first_row)
             .push(second_row)
-            .push(third_row);
+            .push(third_row)
+            .push(fourth_row);
 
         column![]
             .push(heading_with_rule("Settings"))
-            .push(container(col).padding([15, 20]).height(Length::Shrink))
+            .push(container(col).padding([40, 10]).height(Length::Shrink))
             .into()
     }
 }

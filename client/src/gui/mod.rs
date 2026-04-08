@@ -113,6 +113,7 @@ impl Application for Airshipper {
                         Action::UpdateProfile(profile) => {
                             self.active_profile = profile.clone();
                             self.active_profile.reload_wgpu_backends();
+                            self.active_profile.reload_wgpu_devices();
 
                             return Command::perform(
                                 Profile::save(self.active_profile.clone()),

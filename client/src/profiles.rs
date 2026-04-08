@@ -8,7 +8,7 @@ use std::{
     process::Stdio,
 };
 use tokio::{fs::File, io::AsyncWriteExt, process::Command};
-use tracing::error;
+use tracing::{error, warn};
 
 // TODO: Support multiple profiles and manage them here.
 
@@ -32,12 +32,15 @@ pub struct Profile {
     pub env_vars: String,
     // TODO: make a file-picker UI for this
     pub assets_override: Option<String>,
+    pub wgpu_device: WgpuDevice,
 
     /// used to avoid duplicate redownload of patched binaries on nixos
     pub patched_crc32s: Vec<PatchedInfo>,
 
     #[serde(skip)]
     pub supported_wgpu_backends: Vec<WgpuBackend>,
+    #[serde(skip)]
+    pub supported_wgpu_devices: Vec<WgpuDevice>,
 }
 
 const DEFAULT_PROFILE_NAME: &str = "default";
@@ -84,6 +87,12 @@ static WGPU_BACKENDS: &[WgpuBackend] = &[WgpuBackend::Auto, WgpuBackend::Vulkan]
 #[cfg(target_os = "macos")]
 static WGPU_BACKENDS: &[WgpuBackend] = &[WgpuBackend::Auto, WgpuBackend::Metal];
 
+#[derive(Debug, derive_more::Display, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub enum WgpuDevice {
+    Auto,
+    Manual(String),
+}
+
 pub async fn query_wgpu_backends(process_path: &Path) -> Vec<WgpuBackend> {
     if let Some(res) = Command::new(process_path)
         .arg("list-wgpu-backends")
@@ -113,6 +122,27 @@ pub async fn query_wgpu_backends(process_path: &Path) -> Vec<WgpuBackend> {
     } else {
         error!("failed to query WGPU Backends, falling back to defaults");
         WGPU_BACKENDS.to_vec()
+    }
+}
+
+pub async fn query_wgpu_devices(process_path: &Path) -> Vec<WgpuDevice> {
+    if let Some(res) = Command::new(process_path)
+        .arg("list-wgpu-devices")
+        .stdout(Stdio::piped())
+        .output()
+        .await
+        .ok()
+        .filter(|res| res.status.success())
+    {
+        let res = String::from_utf8_lossy(&res.stdout);
+
+        res.lines()
+            .map(|device| WgpuDevice::Manual(device.to_string()))
+            .chain(std::iter::once(WgpuDevice::Auto))
+            .collect()
+    } else {
+        warn!("Failed to query WGPU Devices, falling back to defaults");
+        vec![WgpuDevice::Auto]
     }
 }
 
@@ -172,6 +202,8 @@ impl Profile {
             assets_override: None,
             patched_crc32s: Vec::new(),
             supported_wgpu_backends: Vec::new(),
+            wgpu_device: WgpuDevice::Auto,
+            supported_wgpu_devices: Vec::new(),
         }
     }
 
@@ -185,6 +217,7 @@ impl Profile {
                         // Rust type inference magic
                         let mut profile: Profile = profile;
                         profile.reload_wgpu_backends();
+                        profile.reload_wgpu_devices();
                         profile
                     },
                     Err(e) => {
@@ -326,6 +359,13 @@ impl Profile {
             envs.insert("WGPU_BACKEND", OsString::from(wgpu_backend));
         }
 
+        if profile.wgpu_device != WgpuDevice::Auto {
+            envs.insert(
+                "WGPU_ADAPTER",
+                OsString::from(&profile.wgpu_device.to_string()),
+            );
+        }
+
         let (env_vars, env_var_errors) = parse_env_vars(&profile.env_vars);
         for err in env_var_errors {
             tracing::warn!("Environment variable error: {}", err);
@@ -375,6 +415,22 @@ impl Profile {
             }
         } else {
             self.supported_wgpu_backends = Vec::new();
+        }
+    }
+
+    pub fn reload_wgpu_devices(&mut self) {
+        if self.installed() {
+            self.supported_wgpu_devices = iced::futures::executor::block_on(
+                query_wgpu_devices(&self.voxygen_path()),
+            );
+
+            if self.wgpu_device != WgpuDevice::Auto
+                && !self.supported_wgpu_devices.contains(&self.wgpu_device)
+            {
+                self.wgpu_device = WgpuDevice::Auto
+            }
+        } else {
+            self.supported_wgpu_devices = Vec::new();
         }
     }
 }

@@ -39,7 +39,7 @@ impl Artifact {
             let platform = platform.to_string();
             let file_name = format!(
                 "{}-{}-{}.zip",
-                &channel.name,
+                channel.name,
                 platform,
                 date.format("%Y-%m-%dT%H_%M")
             );

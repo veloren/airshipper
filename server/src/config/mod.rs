@@ -106,7 +106,7 @@ impl Filter {
                     } else {
                         Err(format!(
                             "Filter::Stage failed: {regex} doesn't match {}",
-                            &b.stage
+                            b.stage
                         ))
                     }
                 },
@@ -120,7 +120,7 @@ impl Filter {
                 } else {
                     Err(format!(
                         "Filter::TargetBranch failed: {regex} doesn't match {}",
-                        &pipeline.object_attributes.branch
+                        pipeline.object_attributes.branch
                     ))
                 }
             },
@@ -131,7 +131,7 @@ impl Filter {
                     } else {
                         Err(format!(
                             "Filter::BuildName failed: {regex} doesn't match {}",
-                            &b.name
+                            b.name
                         ))
                     }
                 },
@@ -153,7 +153,7 @@ impl Filter {
                         } else {
                             Err(format!(
                                 "Filter::Variable failed: {value} doesn't match {}",
-                                &v.value
+                                v.value
                             ))
                         }
                     },

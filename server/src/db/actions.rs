@@ -181,7 +181,7 @@ async fn artifacts_to_be_pruned(
         grouped.push(artifact);
     }
 
-    for (_, grouped) in artifacts.iter_mut() {
+    for grouped in artifacts.values_mut() {
         grouped.sort_by_key(|e| e.date);
         // last element is newest, so we pop it to keep it
         grouped.pop();

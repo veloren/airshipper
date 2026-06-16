@@ -47,6 +47,7 @@ iced = { version = "0.12.1", features = [
     "debug",
     "advanced",
 ] }
+rfd = "0.17.2"
 
 # Logging
 tracing = { workspace = true }
@@ -89,7 +90,7 @@ tokio-stream = { version = "0.1.6", features = ["io-util"] }
 futures-util = "0.3.15"
 derive_more = { workspace = true }
 find_folder = "0.3.0"
-lazy_static ={ workspace = true }
+lazy_static = { workspace = true }
 thiserror = { workspace = true }
 bytesize = { workspace = true }
 bytes = { workspace = true }

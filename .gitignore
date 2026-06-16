@@ -27,3 +27,6 @@ airshipper.db
 airshipper.db-shm
 airshipper.db-wal
 /local
+
+# OS-specific
+.DS_Store

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{
     Result,
     assets::{BOOK_ICON, FOLDER_ICON},
@@ -34,6 +36,8 @@ pub enum SettingsPanelMessage {
     WgpuBackendChanged(profiles::WgpuBackend),
     EnvVarsChanged(String),
     AssetsOverrideChanged(String),
+    AssetsOverridePick,
+    AssetsOverridePicked(Option<PathBuf>),
     OpenLogsPressed,
     ChannelsLoaded(Result<Channels>),
 }
@@ -120,11 +124,41 @@ impl SettingsPanelComponent {
             },
             SettingsPanelMessage::AssetsOverrideChanged(assets) => {
                 let mut profile = active_profile.clone();
-                profile.assets_override = Some(assets);
+                profile.assets_override = (!assets.is_empty()).then_some(assets);
                 Some(Command::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
+            },
+            SettingsPanelMessage::AssetsOverridePick => Some(Command::perform(
+                async {
+                    rfd::AsyncFileDialog::new()
+                        .set_title("Select a folder where your asset overrides live")
+                        .pick_folder()
+                        .await
+                        .map(|folder| folder.path().to_path_buf())
+                },
+                |path| {
+                    DefaultViewMessage::SettingsPanel(
+                        SettingsPanelMessage::AssetsOverridePicked(path),
+                    )
+                },
+            )),
+            SettingsPanelMessage::AssetsOverridePicked(Some(path)) => {
+                let mut profile = active_profile.clone();
+                // TODO: we probably should get rid of to_string_lossy()
+                // and display an error on non-utf8 strings here
+                let assets = path.to_string_lossy().into_owned();
+                let assets = assets.trim().to_owned();
+                profile.assets_override = (!assets.is_empty()).then_some(assets);
+                Some(Command::perform(
+                    async { Action::UpdateProfile(profile) },
+                    DefaultViewMessage::Action,
+                ))
+            },
+            SettingsPanelMessage::AssetsOverridePicked(None) => {
+                // user closed the menu, chill out
+                None
             },
             SettingsPanelMessage::ChannelsLoaded(result) => {
                 if let Ok(channels) = result {
@@ -315,20 +349,34 @@ impl SettingsPanelComponent {
             .push(
                 tooltip(
                     container(
-                        text_input(
-                            "/path/to/asset/folder/with/overrides",
-                            active_profile
-                                .assets_override
-                                .as_deref()
-                                .unwrap_or_default(),
-                        )
-                        .on_input(|path| {
-                            DefaultViewMessage::SettingsPanel(
-                                SettingsPanelMessage::AssetsOverrideChanged(path),
+                        row![
+                            text_input(
+                                "/path/to/asset/folder/with/overrides",
+                                active_profile
+                                    .assets_override
+                                    .as_deref()
+                                    .unwrap_or_default(),
                             )
-                        })
-                        .padding(PICK_LIST_PADDING)
-                        .size(FONT_SIZE),
+                            .on_input(|path| {
+                                DefaultViewMessage::SettingsPanel(
+                                    SettingsPanelMessage::AssetsOverrideChanged(path),
+                                )
+                            })
+                            .padding(PICK_LIST_PADDING)
+                            .size(FONT_SIZE),
+                            button(
+                                image(Handle::from_memory(FOLDER_ICON.to_owned()))
+                                    .height(Length::Fixed(15.0))
+                                    .width(Length::Fixed(15.0))
+                            )
+                            .on_press(DefaultViewMessage::SettingsPanel(
+                                SettingsPanelMessage::AssetsOverridePick,
+                            ))
+                            .padding(PICK_LIST_PADDING)
+                            .style(ButtonStyle::Transparent),
+                        ]
+                        .spacing(5)
+                        .align_items(Alignment::Center),
                     )
                     .height(Length::Fixed(30.0)),
                     text("Folder where you can put modified assets for testing or fun!")

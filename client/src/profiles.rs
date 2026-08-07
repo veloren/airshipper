@@ -333,7 +333,7 @@ impl Profile {
         }
 
         if let Some(path) = &profile.assets_override {
-            if Path::new(&path).is_dir() {
+            if profile.directory().join(path).is_dir() {
                 envs.insert("VELOREN_ASSETS_OVERRIDE", path.into());
             } else {
                 tracing::warn!(

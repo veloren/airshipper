@@ -379,8 +379,11 @@ impl SettingsPanelComponent {
                         .align_items(Alignment::Center),
                     )
                     .height(Length::Fixed(30.0)),
-                    text("Folder where you can put modified assets for testing or fun!")
-                        .size(14),
+                    text(
+                        "Folder where you can put modified assets for testing or fun! \
+                         \nDefaults to <profile directory>/assets_override",
+                    )
+                    .size(14),
                     Position::Bottom,
                 )
                 .style(

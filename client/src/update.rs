@@ -103,7 +103,13 @@ async fn evaluate(mut profile: Profile) -> Option<(Progress, State)> {
         return Some((Progress::Offline, State::Finished));
     };
     let remote = ReqwestCachedRemoteZip::with_inner(remote, cache);
-    const KEEP_PATHS: &[&str] = &["userdata/", "screenshots/", "maps/", "veloren.zip"];
+    const KEEP_PATHS: &[&str] = &[
+        "assets_override/",
+        "userdata/",
+        "screenshots/",
+        "maps/",
+        "veloren.zip",
+    ];
     let ignore = KEEP_PATHS.iter().map(|p| p.to_string()).collect();
     let local = PatchedLocalStorage {
         inner: TokioLocalStorage::new(profile.directory(), ignore),

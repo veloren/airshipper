@@ -322,6 +322,8 @@ impl Profile {
         let userdata_dir = profile.directory().join("userdata").into_os_string();
         let screenshot_dir = profile.directory().join("screenshots").into_os_string();
         let assets_dir = profile.directory().join("assets").into_os_string();
+        let default_assets_override_dir =
+            profile.directory().join("assets_override").into_os_string();
 
         if profile.log_level != LogLevel::Default {
             let log_level = match profile.log_level {
@@ -332,20 +334,23 @@ impl Profile {
             envs.insert("RUST_LOG", log_level);
         }
 
-        if let Some(path) = &profile.assets_override {
-            if Path::new(&path).is_dir() {
-                envs.insert("VELOREN_ASSETS_OVERRIDE", path.into());
-            } else {
-                tracing::warn!(
-                    "We can't find this assets override as a directory: {}",
-                    path
-                );
-            }
+        if profile.assets_override.is_none()
+            && let Err(e) = std::fs::create_dir_all(&default_assets_override_dir)
+        {
+            tracing::error!("Failed to create default assets override directory: {}", e);
         }
 
         envs.insert("VOXYGEN_SCREENSHOT", screenshot_dir);
         envs.insert("VELOREN_USERDATA", userdata_dir);
         envs.insert("VELOREN_ASSETS", assets_dir);
+        envs.insert(
+            "VELOREN_ASSETS_OVERRIDE",
+            profile
+                .assets_override
+                .as_ref()
+                .map(|p| p.into())
+                .unwrap_or(default_assets_override_dir),
+        );
 
         if profile.wgpu_backend != WgpuBackend::Auto {
             let wgpu_backend = match profile.wgpu_backend {

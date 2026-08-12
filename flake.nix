@@ -57,10 +57,21 @@
     };
 
     makeVoxygenPatcher = pkgs: let
-      runtimeLibs = with pkgs; (
-        [libxkbcommon udev alsa-lib stdenv.cc.cc.lib libGL vulkan-loader wayland wayland-protocols]
-        ++ (with xorg; [libxcb libX11 libXrandr libXi libXcursor])
-      );
+      runtimeLibs = with pkgs; [
+        libxkbcommon
+        udev
+        alsa-lib
+        stdenv.cc.cc.lib
+        libGL
+        vulkan-loader
+        wayland
+        wayland-protocols
+        libxcb
+        libx11
+        libxrandr
+        libxi
+        libxcursor
+      ];
     in
       pkgs.writeShellScript "voxygen-patch" ''
         echo "making veloren-voxygen executable"
@@ -143,13 +154,13 @@
           runtimeLibs = with pkgs;
             [
               libxkbcommon
+              libx11
+              libxrandr
+              libxi
+              libxcursor
               vulkan-loader
               wayland
               wayland-protocols
-              xorg.libX11
-              xorg.libXrandr
-              xorg.libXi
-              xorg.libXcursor
             ]
             ++ commonMkDerivation.buildInputs;
           depsDrvConfig.mkDerivation = commonMkDerivation;

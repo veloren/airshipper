@@ -54,6 +54,7 @@
   - wget -q https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-macos-universal.tar.gz;
   - tar -xzf cmake-3.31.8-macos-universal.tar.gz;
   - ls -la cmake-3.31.8-macos-universal/CMake.app/Contents;
+  - sudo mkdir -p /usr/local/bin/ /usr/local/share/;
   - sudo cp -r cmake-3.31.8-macos-universal/CMake.app/Contents/bin/* /usr/local/bin/;
   - sudo cp -r cmake-3.31.8-macos-universal/CMake.app/Contents/share/* /usr/local/share/;
   - which cmake;
@@ -75,9 +76,6 @@
   timeout: 2h
   before_script:
     - *build-macos-install-script
-    # Using fat LTO on macos_x86_64 caused timeouts in the build pipeline,
-    # overriding it to thin here fixes this.
-    - export PROFILE="release-thinlto";
     - *build-macos-before-script
     - rustup target add x86_64-apple-darwin;
     - export RUST_TARGET="x86_64-apple-darwin";
@@ -85,9 +83,9 @@
     - export MACOSX_DEPLOYMENT_TARGET="10.13"
     - cargo build --release -p airshipper --all-features --target ${RUST_TARGET}
     - cargo build --release -p airshipper-server --all-features --target ${RUST_TARGET}
-    - zip -j $CI_PROJECT_DIR/airshipper-macos target/release/airshipper LICENSE
-    - mv target/release/airshipper $CI_PROJECT_DIR
-    - mv target/release/airshipper-server $CI_PROJECT_DIR
+    - zip -j $CI_PROJECT_DIR/airshipper-macos target/${RUST_TARGET}/release/airshipper LICENSE
+    - mv target/${RUST_TARGET}/release/airshipper $CI_PROJECT_DIR
+    - mv target/${RUST_TARGET}/release/airshipper-server $CI_PROJECT_DIR
   artifacts:
     paths:
       - airshipper

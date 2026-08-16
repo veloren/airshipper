@@ -3,16 +3,16 @@
     "crane": {
       "flake": false,
       "locked": {
-        "lastModified": 1752946753,
-        "narHash": "sha256-g5uP3jIj+STUcfTJDKYopxnSijs2agRg13H0SGL5iE4=",
+        "lastModified": 1779041105,
+        "narHash": "sha256-nnGD2f8OlAZT2i5OfwikJsw+ifWfiA4d6A8BWlgOXV0=",
         "owner": "ipetkov",
         "repo": "crane",
-        "rev": "544d09fecc8c2338542c57f3f742f1a0c8c71e13",
+        "rev": "10e6e3cb966f7cfcc789fe5eee7a85f3188ce08b",
         "type": "github"
       },
       "original": {
         "owner": "ipetkov",
-        "ref": "v0.21.0",
+        "ref": "v0.23.4",
         "repo": "crane",
         "type": "github"
       }
@@ -26,16 +26,15 @@
         "pyproject-nix": "pyproject-nix"
       },
       "locked": {
-        "lastModified": 1757569662,
-        "narHash": "sha256-R3Dh8L++fjeN3LSbJVSwfWxN28mf3ZRVagFlAqyZZaA=",
-        "owner": "NeuralModder",
+        "lastModified": 1779999259,
+        "narHash": "sha256-aLAG+TG7stjp0AOI2uvn4agxrrws2Q+fXMDS8ZuHYmo=",
+        "owner": "nix-community",
         "repo": "dream2nix",
-        "rev": "15f29702bc7fa7f6ff8134b5bacc83cce759c7a7",
+        "rev": "dd8a3ebbbfcfafc139dba1323a6c443ec034c9f5",
         "type": "github"
       },
       "original": {
-        "owner": "NeuralModder",
-        "ref": "update-crane",
+        "owner": "nix-community",
         "repo": "dream2nix",
         "type": "github"
       }
@@ -187,11 +186,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1752481895,
-        "narHash": "sha256-luVj97hIMpCbwhx3hWiRwjP2YvljWy8FM+4W9njDhLA=",
+        "lastModified": 1763017646,
+        "narHash": "sha256-Z+R2lveIp6Skn1VPH3taQIuMhABg1IizJd8oVdmdHsQ=",
         "owner": "pyproject-nix",
         "repo": "pyproject.nix",
-        "rev": "16ee295c25107a94e59a7fc7f2e5322851781162",
+        "rev": "47bd6f296502842643078d66128f7b5e5370790c",
         "type": "github"
       },
       "original": {

@@ -17,11 +17,11 @@
       inputs.nixpkgs-lib.follows = "nixpkgs";
     };
     dream2nix = {
-      url = "github:NeuralModder/dream2nix/update-crane";
+      url = "github:nix-community/dream2nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     crane = {
-      url = "github:ipetkov/crane/v0.21.0";
+      url = "github:ipetkov/crane/v0.23.4";
       flake = false;
     };
   };

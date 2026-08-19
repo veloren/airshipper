@@ -9,7 +9,7 @@ use crate::gui::{
     widget::*,
 };
 use iced::{
-    Alignment, Command, Length,
+    Alignment, Length, Task,
     alignment::{Horizontal, Vertical},
     widget::{button, column, container, row, text},
 };
@@ -98,7 +98,7 @@ impl UpdateView {
         &mut self,
         msg: UpdateViewMessage,
         release: &Option<Release>,
-    ) -> Command<UpdateViewMessage> {
+    ) -> Task<UpdateViewMessage> {
         match msg {
             // Will be handled by main view
             UpdateViewMessage::Action(_) => {},
@@ -107,7 +107,7 @@ impl UpdateView {
                 tracing::info!("Updating Airshipper...");
                 self.message = "Updating Airshipper...".to_string();
                 let release = release.as_ref().unwrap().clone();
-                return Command::perform(
+                return Task::perform(
                     async {
                         tokio::task::block_in_place(move || {
                             if let Err(e) = crate::windows::update(&release) {
@@ -128,13 +128,13 @@ impl UpdateView {
             },
 
             UpdateViewMessage::SkipPressed => {
-                return Command::perform(
+                return Task::perform(
                     async { Action::SwitchView(View::Default) },
                     UpdateViewMessage::Action,
                 );
             },
         }
 
-        Command::none()
+        Task::none()
     }
 }

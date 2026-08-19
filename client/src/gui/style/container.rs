@@ -3,62 +3,40 @@ use crate::gui::style::{
     DARK_WHITE, LIGHT_GREY, LIME_GREEN, MEDIUM_GREY, NAVY_BLUE, VERY_DARK_GREY,
 };
 use iced::{
-    Background, Border, Color,
-    widget::{container, container::Appearance},
+    Border, Color,
+    widget::container::{Catalog, Style, StyleFn},
 };
 
-#[derive(Default)]
-pub enum ContainerStyle {
-    #[default]
-    Default,
-    Dark,
-    Announcement,
-    LoadingBlogPost,
-    BlogPost,
-    SidePanel,
-    ColumnHeading,
-    ChangelogHeader,
-    Tooltip,
-    ExtraBrowser,
-}
+impl Catalog for AirshipperTheme {
+    type Class<'a> = StyleFn<'a, Self>;
 
-impl container::StyleSheet for AirshipperTheme {
-    type Style = ContainerStyle;
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(|_| Style::default())
+    }
 
-    fn appearance(&self, style: &Self::Style) -> Appearance {
-        match style {
-            ContainerStyle::Default => Appearance::default(),
-            ContainerStyle::Announcement => announcement_container_style(),
-            ContainerStyle::Dark => dark_container_style(),
-            ContainerStyle::LoadingBlogPost => loading_blogpost_container_style(),
-            ContainerStyle::BlogPost => blogpost_container_style(),
-            ContainerStyle::SidePanel => sidepanel_container_style(),
-            ContainerStyle::ColumnHeading => column_heading_container_style(),
-            ContainerStyle::ChangelogHeader => changelog_header_container_style(),
-            ContainerStyle::Tooltip => tooltip_container_style(),
-            ContainerStyle::ExtraBrowser => extra_browser_container_style(),
-        }
+    fn style(&self, class: &Self::Class<'_>) -> Style {
+        class(self)
     }
 }
 
-fn dark_container_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(VERY_DARK_GREY)),
+pub fn dark(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: Some(VERY_DARK_GREY.into()),
         text_color: Some(Color::WHITE),
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn announcement_container_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(BRIGHT_ORANGE)),
+pub fn announcement(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: Some(BRIGHT_ORANGE.into()),
         text_color: Some(Color::WHITE),
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn loading_blogpost_container_style() -> Appearance {
-    Appearance {
+pub fn loading_blogpost(_theme: &AirshipperTheme) -> Style {
+    Style {
         background: None,
         border: Border {
             color: DARK_WHITE,
@@ -66,57 +44,57 @@ fn loading_blogpost_container_style() -> Appearance {
             ..Default::default()
         },
         text_color: Some(DARK_WHITE),
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn blogpost_container_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(BLOG_POST_BACKGROUND_BLUE)),
+pub fn blogpost(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: Some(BLOG_POST_BACKGROUND_BLUE.into()),
         text_color: Some(Color::WHITE),
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn sidepanel_container_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(BACKGROUND_BLUE)),
-        ..Appearance::default()
+pub fn sidepanel(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: Some(BACKGROUND_BLUE.into()),
+        ..Style::default()
     }
 }
 
-fn column_heading_container_style() -> Appearance {
-    Appearance {
+pub fn column_heading(_theme: &AirshipperTheme) -> Style {
+    Style {
         text_color: Some(Color::WHITE),
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn changelog_header_container_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(Color::BLACK)),
+pub fn changelog_header(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: Some(Color::BLACK.into()),
         text_color: Some(Color::WHITE),
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn extra_browser_container_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(LIME_GREEN)),
-        border: Border::with_radius(25.0),
-        ..Appearance::default()
+pub fn extra_browser(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: Some(LIME_GREEN.into()),
+        border: Border::default().rounded(25.0),
+        ..Style::default()
     }
 }
 
-fn tooltip_container_style() -> Appearance {
-    Appearance {
+pub fn tooltip(_theme: &AirshipperTheme) -> Style {
+    Style {
         text_color: Some(LIGHT_GREY),
-        background: Some(Background::Color(NAVY_BLUE)),
+        background: Some(NAVY_BLUE.into()),
         border: Border {
             color: MEDIUM_GREY,
             width: 1.0,
             ..Default::default()
         },
-        ..Appearance::default()
+        ..Style::default()
     }
 }

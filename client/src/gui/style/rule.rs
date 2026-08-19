@@ -3,31 +3,27 @@ use iced::{
     Color,
     widget::{
         rule,
-        rule::{Appearance, FillMode},
+        rule::{FillMode, Style, StyleFn},
     },
 };
 
-#[derive(Debug, Clone, Copy, Default)]
-pub enum RuleStyle {
-    #[default]
-    Default,
-}
+impl rule::Catalog for AirshipperTheme {
+    type Class<'a> = StyleFn<'a, Self>;
 
-impl rule::StyleSheet for AirshipperTheme {
-    type Style = RuleStyle;
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(default)
+    }
 
-    fn appearance(&self, style: &Self::Style) -> Appearance {
-        match style {
-            RuleStyle::Default => default_rule_style(),
-        }
+    fn style(&self, class: &Self::Class<'_>) -> Style {
+        class(self)
     }
 }
 
-fn default_rule_style() -> Appearance {
-    Appearance {
-        width: 1,
+pub fn default(_theme: &AirshipperTheme) -> Style {
+    Style {
         color: Color::WHITE,
         radius: 0.0.into(),
         fill_mode: FillMode::Full,
+        snap: true,
     }
 }

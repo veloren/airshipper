@@ -10,8 +10,7 @@ use crate::{
             ServerBrowserPanelMessage, SettingsPanelComponent, SettingsPanelMessage,
         },
         rss_feed::RssFeedComponentMessage::UpdateRssFeed,
-        style::container::ContainerStyle,
-        subscriptions,
+        style, subscriptions,
         views::Action,
         widget::*,
     },
@@ -19,7 +18,7 @@ use crate::{
 };
 
 use iced::{
-    Command, Length,
+    Length, Task,
     widget::{column, container, row},
 };
 
@@ -124,7 +123,7 @@ impl DefaultView {
         )
         .height(Length::Fill)
         .width(Length::Fixed(360.0))
-        .style(ContainerStyle::SidePanel);
+        .style(style::container::sidepanel);
 
         let mut main_row = row![].push(left);
 
@@ -144,7 +143,7 @@ impl DefaultView {
             let right = container(news_panel_component.view())
                 .height(Length::Fill)
                 .width(Length::Fixed(248.0))
-                .style(ContainerStyle::SidePanel);
+                .style(style::container::sidepanel);
 
             main_row = main_row.push(middle).push(right);
         } else {
@@ -164,7 +163,7 @@ impl DefaultView {
         &mut self,
         msg: DefaultViewMessage,
         active_profile: &Profile,
-    ) -> Command<DefaultViewMessage> {
+    ) -> Task<DefaultViewMessage> {
         match msg {
             // Messages
             // Will be handled by main view
@@ -173,13 +172,18 @@ impl DefaultView {
                 let channel = active_profile.channel.clone();
                 let api_version_url = active_profile.api_version_url();
                 let announcement_url = active_profile.announcement_url();
-                return Command::batch(vec![
-                    Command::perform(NewsPanelComponent::load_news(), |update| {
-                        DefaultViewMessage::NewsPanel(NewsPanelMessage::RssUpdate(
-                            UpdateRssFeed(update),
-                        ))
-                    }),
-                    Command::perform(
+                return Task::batch(vec![
+                    Task::future(NewsPanelComponent::load_news()).then(
+                        |(update, task)| {
+                            Task::batch([
+                                Task::done(DefaultViewMessage::NewsPanel(
+                                    NewsPanelMessage::RssUpdate(UpdateRssFeed(update)),
+                                )),
+                                task,
+                            ])
+                        },
+                    ),
+                    Task::perform(
                         ChangelogPanelComponent::load_changelog(),
                         move |update| {
                             DefaultViewMessage::ChangelogPanel(
@@ -187,12 +191,12 @@ impl DefaultView {
                             )
                         },
                     ),
-                    Command::perform(ServerBrowserPanelComponent::fetch(), |update| {
+                    Task::perform(ServerBrowserPanelComponent::fetch(), |update| {
                         DefaultViewMessage::ServerBrowserPanel(
                             ServerBrowserPanelMessage::UpdateServerList(update),
                         )
                     }),
-                    Command::perform(
+                    Task::perform(
                         AnnouncementPanelComponent::fetch(
                             api_version_url,
                             announcement_url,
@@ -203,17 +207,18 @@ impl DefaultView {
                             )
                         },
                     ),
-                    Command::perform(
-                        CommunityShowcaseComponent::load_community_posts(),
-                        |update| {
-                            DefaultViewMessage::CommunityShowcasePanel(
-                                CommunityShowcasePanelMessage::RssUpdate(UpdateRssFeed(
-                                    update,
+                    Task::future(CommunityShowcaseComponent::load_community_posts())
+                        .then(|(update, task)| {
+                            Task::batch([
+                                Task::done(DefaultViewMessage::CommunityShowcasePanel(
+                                    CommunityShowcasePanelMessage::RssUpdate(
+                                        UpdateRssFeed(update),
+                                    ),
                                 )),
-                            )
-                        },
-                    ),
-                    Command::perform(
+                                task,
+                            ])
+                        }),
+                    Task::perform(
                         Channels::fetch(active_profile.channel_url()),
                         |channels| {
                             DefaultViewMessage::SettingsPanel(
@@ -222,13 +227,13 @@ impl DefaultView {
                         },
                     ),
                     #[cfg(windows)]
-                    Command::perform(
+                    Task::perform(
                         async { tokio::task::block_in_place(crate::windows::query) },
                         DefaultViewMessage::LauncherUpdate,
                     ),
-                    Command::perform(async {}, |_| {
-                        DefaultViewMessage::GamePanel(GamePanelMessage::StartUpdate)
-                    }),
+                    Task::done(DefaultViewMessage::GamePanel(
+                        GamePanelMessage::StartUpdate,
+                    )),
                 ]);
             },
 
@@ -276,7 +281,7 @@ impl DefaultView {
             #[cfg(windows)]
             DefaultViewMessage::LauncherUpdate(update) => {
                 if let Ok(Some(release)) = update {
-                    return Command::perform(
+                    return Task::perform(
                         async { Action::LauncherUpdate(release) },
                         DefaultViewMessage::Action,
                     );
@@ -296,11 +301,9 @@ impl DefaultView {
                     // Launch button back to saying "Launch" instead of "Connect to
                     // selected server"
                     if !self.show_server_browser {
-                        return Command::perform(async {}, |_| {
-                            DefaultViewMessage::ServerBrowserPanel(
-                                ServerBrowserPanelMessage::SelectServerEntry(None),
-                            )
-                        });
+                        return Task::done(DefaultViewMessage::ServerBrowserPanel(
+                            ServerBrowserPanelMessage::SelectServerEntry(None),
+                        ));
                     }
                 },
                 Interaction::OpenURL(url) => {
@@ -314,6 +317,6 @@ impl DefaultView {
             },
         }
 
-        Command::none()
+        Task::none()
     }
 }

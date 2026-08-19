@@ -1,29 +1,28 @@
 use crate::gui::style::{AirshipperTheme, LIME_GREEN, VERY_DARK_GREY};
 use iced::{
-    Background,
-    widget::{progress_bar, progress_bar::Appearance},
+    Border,
+    widget::progress_bar::{Catalog, Style, StyleFn},
 };
 
-#[derive(Default)]
-pub enum ProgressBarStyle {
-    #[default]
-    Default,
-}
+impl Catalog for AirshipperTheme {
+    type Class<'a> = StyleFn<'a, Self>;
 
-impl progress_bar::StyleSheet for AirshipperTheme {
-    type Style = ProgressBarStyle;
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(default)
+    }
 
-    fn appearance(&self, style: &Self::Style) -> Appearance {
-        match style {
-            ProgressBarStyle::Default => default_progress_bar_style(),
-        }
+    fn style(&self, class: &Self::Class<'_>) -> Style {
+        class(self)
     }
 }
 
-fn default_progress_bar_style() -> Appearance {
-    Appearance {
-        background: Background::Color(VERY_DARK_GREY),
-        bar: Background::Color(LIME_GREEN),
-        border_radius: 3.0.into(),
+pub fn default(_theme: &AirshipperTheme) -> Style {
+    Style {
+        background: VERY_DARK_GREY.into(),
+        bar: LIME_GREEN.into(),
+        border: Border {
+            radius: 3.0.into(),
+            ..Default::default()
+        },
     }
 }

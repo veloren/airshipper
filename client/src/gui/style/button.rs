@@ -6,276 +6,243 @@ use crate::gui::style::{
     TWITCH_PURPLE, VERY_DARK_GREY, YOUTUBE_RED,
 };
 use iced::{
-    Background, Border, Color, Vector,
-    widget::{button, button::Appearance},
+    Background, Border, Color, Shadow, Vector,
+    widget::button::{Catalog, Status, Style, StyleFn},
 };
 
-#[derive(Debug, Clone, Copy)]
-pub enum ButtonStyle {
-    Download(DownloadButtonStyle),
-    AirshipperDownload,
-    ServerListEntry(ServerListEntryButtonState),
-    Browser(BrowserButtonStyle),
-    NextPrev,
-    Transparent,
-    Settings,
-    ColumnHeading,
-    ServerBrowser,
-}
+impl Catalog for AirshipperTheme {
+    type Class<'a> = StyleFn<'a, Self>;
 
-#[derive(Debug, Clone, Copy)]
-pub enum DownloadButtonStyle {
-    Launch(ButtonState),
-    Update(ButtonState),
-    #[cfg(windows)]
-    Skip,
-}
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(download_launch)
+    }
 
-#[derive(Debug, Clone, Copy)]
-pub enum BrowserButtonStyle {
-    Gitlab,
-    Discord,
-    Mastodon,
-    Reddit,
-    Youtube,
-    Twitch,
-    Extra,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ButtonState {
-    Enabled,
-    Disabled,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ServerListEntryButtonState {
-    Selected,
-    NotSelected,
-}
-
-impl Default for ButtonStyle {
-    fn default() -> Self {
-        ButtonStyle::Download(DownloadButtonStyle::Launch(ButtonState::Enabled))
+    fn style(&self, class: &Self::Class<'_>, status: Status) -> Style {
+        class(self, status)
     }
 }
 
-impl button::StyleSheet for AirshipperTheme {
-    type Style = ButtonStyle;
-
-    fn active(&self, style: &Self::Style) -> Appearance {
-        match style {
-            ButtonStyle::Download(download_button_style) => match download_button_style {
-                DownloadButtonStyle::Launch(ButtonState::Enabled) => {
-                    active_download_button_style(LIME_GREEN)
-                },
-                DownloadButtonStyle::Update(ButtonState::Enabled) => {
-                    active_download_button_style(CORNFLOWER_BLUE)
-                },
-                DownloadButtonStyle::Launch(ButtonState::Disabled)
-                | DownloadButtonStyle::Update(ButtonState::Disabled) => {
-                    disabled_download_button_style()
-                },
-                #[cfg(windows)]
-                DownloadButtonStyle::Skip => active_download_button_style(TOMATO_RED),
-            },
-            ButtonStyle::AirshipperDownload => airshipper_download_button_appearance(),
-            ButtonStyle::ServerListEntry(ServerListEntryButtonState::Selected) => {
-                server_list_entry_selected_style_active()
-            },
-            ButtonStyle::ServerListEntry(ServerListEntryButtonState::NotSelected) => {
-                server_list_entry_not_selected_style_active()
-            },
-            ButtonStyle::Browser(style) => browser_button_style_active(*style),
-            ButtonStyle::NextPrev => next_prev_button_style(),
-            ButtonStyle::Transparent => transparent_button_style(),
-            ButtonStyle::Settings => settings_button_style_active(),
-            ButtonStyle::ColumnHeading => column_heading_button_style(),
-            ButtonStyle::ServerBrowser => server_browser_button_style_active(),
-        }
-    }
-
-    fn hovered(&self, style: &Self::Style) -> Appearance {
-        match style {
-            ButtonStyle::Download(download_button_style) => match download_button_style {
-                DownloadButtonStyle::Launch(ButtonState::Enabled) => {
-                    hovered_download_button_style(LIME_GREEN)
-                },
-                DownloadButtonStyle::Update(ButtonState::Enabled) => {
-                    hovered_download_button_style(CORNFLOWER_BLUE)
-                },
-                #[cfg(windows)]
-                DownloadButtonStyle::Skip => hovered_download_button_style(TOMATO_RED),
-                _ => self.active(style),
-            },
-            ButtonStyle::ServerListEntry(ServerListEntryButtonState::Selected) => {
-                server_list_entry_selected_style_hovered()
-            },
-            ButtonStyle::ServerListEntry(ServerListEntryButtonState::NotSelected) => {
-                server_list_entry_not_selected_style_hovered()
-            },
-            ButtonStyle::Browser(style) => browser_button_style_hovered(*style),
-            ButtonStyle::ServerBrowser => server_browser_button_style_hovered(),
-            ButtonStyle::Settings => settings_button_style_hovered(),
-            _ => self.active(style), // Fallback to no hover style
-        }
+pub fn download_launch(_theme: &AirshipperTheme, status: Status) -> Style {
+    match status {
+        Status::Active | Status::Pressed => active_download_button_style(LIME_GREEN),
+        Status::Hovered => hovered_download_button_style(LIME_GREEN),
+        Status::Disabled => disabled_download_button_style(),
     }
 }
 
-fn airshipper_download_button_appearance() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(VERY_DARK_GREY)),
-        border: Border::with_radius(25.0),
-        ..Appearance::default()
+pub fn download_update(_theme: &AirshipperTheme, status: Status) -> Style {
+    match status {
+        Status::Active | Status::Pressed => active_download_button_style(CORNFLOWER_BLUE),
+        Status::Hovered => hovered_download_button_style(CORNFLOWER_BLUE),
+        Status::Disabled => disabled_download_button_style(),
     }
 }
 
-fn active_download_button_style(background_color: Color) -> Appearance {
-    Appearance {
-        background: Some(Background::Color(background_color)),
+#[cfg(windows)]
+pub fn download_skip(_theme: &AirshipperTheme, status: Status) -> Style {
+    match status {
+        Status::Active | Status::Pressed => active_download_button_style(TOMATO_RED),
+        Status::Hovered => hovered_download_button_style(TOMATO_RED),
+        Status::Disabled => disabled_download_button_style(),
+    }
+}
+
+pub fn airshipper_download(_theme: &AirshipperTheme, _status: Status) -> Style {
+    Style {
+        background: Some(VERY_DARK_GREY.into()),
+        border: Border::default().rounded(25.0),
+        ..Style::default()
+    }
+}
+
+pub fn server_list_entry_selected(_theme: &AirshipperTheme, status: Status) -> Style {
+    match status {
+        Status::Active | Status::Pressed | Status::Disabled => Style {
+            background: Some(NAVY_BLUE.into()),
+            text_color: Color::WHITE,
+            ..Style::default()
+        },
+        Status::Hovered => Style {
+            background: Some(NAVY_BLUE.into()),
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                offset: Vector::new(0.0, 0.0),
+                ..Default::default()
+            },
+            ..Style::default()
+        },
+    }
+}
+
+pub fn server_list_entry_not_selected(_theme: &AirshipperTheme, status: Status) -> Style {
+    match status {
+        Status::Active | Status::Pressed | Status::Disabled => Style {
+            background: Some(VERY_DARK_GREY.into()),
+            text_color: Color::WHITE,
+            ..Style::default()
+        },
+        Status::Hovered => Style {
+            background: Some(color_multiply(VERY_DARK_GREY, 1.2).into()),
+            text_color: Color::WHITE,
+            shadow: Shadow {
+                offset: Vector::new(0.0, 0.0),
+                ..Default::default()
+            },
+            ..Style::default()
+        },
+    }
+}
+
+pub fn browser_gitlab(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => LIME_GREEN,
+        Status::Hovered => color_multiply(LIME_GREEN, 1.1),
+    };
+    browser_color(status, color)
+}
+
+pub fn browser_discord(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => *DISCORD_BLURPLE,
+        Status::Hovered => color_multiply(*DISCORD_BLURPLE, 1.1),
+    };
+    browser_color(status, color)
+}
+
+pub fn browser_mastodon(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => *MASTODON_PURPLE,
+        Status::Hovered => color_multiply(*MASTODON_PURPLE, 1.1),
+    };
+    browser_color(status, color)
+}
+
+pub fn browser_reddit(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => *REDDIT_ORANGE,
+        Status::Hovered => color_multiply(*REDDIT_ORANGE, 1.1),
+    };
+    browser_color(status, color)
+}
+
+pub fn browser_youtube(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => *YOUTUBE_RED,
+        Status::Hovered => color_multiply(*YOUTUBE_RED, 1.1),
+    };
+    browser_color(status, color)
+}
+
+pub fn browser_twitch(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => *TWITCH_PURPLE,
+        Status::Hovered => color_multiply(*TWITCH_PURPLE, 1.1),
+    };
+    browser_color(status, color)
+}
+
+pub fn browser_extra(_theme: &AirshipperTheme, status: Status) -> Style {
+    let color = match status {
+        Status::Active | Status::Pressed | Status::Disabled => LIME_GREEN,
+        Status::Hovered => color_multiply(LIME_GREEN, 1.1),
+    };
+    browser_color(status, color)
+}
+
+fn browser_color(_status: Status, background: impl Into<Background>) -> Style {
+    Style {
+        background: Some(background.into()),
+        border: Border::default().rounded(25.0),
+        ..Style::default()
+    }
+}
+
+fn active_download_button_style(background_color: Color) -> Style {
+    Style {
+        background: Some(background_color.into()),
         text_color: Color::WHITE,
-        border: Border::with_radius(4.0),
-        ..Appearance::default()
+        border: Border::default().rounded(4.0),
+        ..Style::default()
     }
 }
 
-fn hovered_download_button_style(background_color: Color) -> Appearance {
-    Appearance {
-        background: Some(Background::Color(color_multiply(background_color, 1.1))),
+fn hovered_download_button_style(background_color: Color) -> Style {
+    Style {
+        background: Some(color_multiply(background_color, 1.1).into()),
         text_color: Color::WHITE,
-        border: Border::with_radius(4.0),
-        ..Appearance::default()
+        border: Border::default().rounded(4.0),
+        ..Style::default()
     }
 }
 
-fn disabled_download_button_style() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(SLATE)),
-        shadow_offset: Vector::new(1.0, 1.0),
+fn disabled_download_button_style() -> Style {
+    Style {
+        background: Some(SLATE.into()),
+        shadow: Shadow {
+            offset: Vector::new(1.0, 1.0),
+            ..Default::default()
+        },
         text_color: LIGHT_GREY,
-        border: Border::with_radius(4.0),
-        ..Appearance::default()
+        border: Border::default().rounded(4.0),
+        ..Style::default()
     }
 }
 
-fn server_list_entry_selected_style_active() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(NAVY_BLUE)),
-        text_color: Color::WHITE,
-        ..Appearance::default()
-    }
-}
-
-fn server_list_entry_selected_style_hovered() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(NAVY_BLUE)),
-        text_color: Color::WHITE,
-        shadow_offset: Vector::new(0.0, 0.0),
-        ..Appearance::default()
-    }
-}
-
-fn server_list_entry_not_selected_style_active() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(VERY_DARK_GREY)),
-        text_color: Color::WHITE,
-        ..Appearance::default()
-    }
-}
-
-fn server_list_entry_not_selected_style_hovered() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(color_multiply(VERY_DARK_GREY, 1.2))),
-        text_color: Color::WHITE,
-        shadow_offset: Vector::new(0.0, 0.0),
-        ..Appearance::default()
-    }
-}
-
-fn browser_button_style_to_color(style: BrowserButtonStyle) -> Color {
-    match style {
-        BrowserButtonStyle::Discord => *DISCORD_BLURPLE,
-        BrowserButtonStyle::Gitlab => LIME_GREEN,
-        BrowserButtonStyle::Extra => LIME_GREEN,
-        BrowserButtonStyle::Youtube => *YOUTUBE_RED,
-        BrowserButtonStyle::Mastodon => *MASTODON_PURPLE,
-        BrowserButtonStyle::Reddit => *REDDIT_ORANGE,
-        BrowserButtonStyle::Twitch => *TWITCH_PURPLE,
-    }
-}
-
-fn browser_button_style_active(style: BrowserButtonStyle) -> Appearance {
-    Appearance {
-        background: Some(Background::Color(browser_button_style_to_color(style))),
-        border: Border::with_radius(25.0),
-        ..Appearance::default()
-    }
-}
-
-fn browser_button_style_hovered(style: BrowserButtonStyle) -> Appearance {
-    let color = color_multiply(browser_button_style_to_color(style), 1.1);
-    Appearance {
-        background: Some(Background::Color(color)),
-        ..browser_button_style_active(style)
-    }
-}
-
-fn next_prev_button_style() -> Appearance {
-    Appearance {
+pub fn next_prev(_theme: &AirshipperTheme, _status: Status) -> Style {
+    Style {
         background: None,
         text_color: DARK_WHITE,
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn transparent_button_style() -> Appearance {
-    Appearance {
+pub fn transparent(_theme: &AirshipperTheme, _status: Status) -> Style {
+    Style {
         background: None,
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn settings_button_style_active() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(Color::TRANSPARENT)),
-        border: Border::with_radius(10.0),
-        ..Appearance::default()
+pub fn settings(_theme: &AirshipperTheme, status: Status) -> Style {
+    match status {
+        Status::Active | Status::Pressed | Status::Disabled => Style {
+            background: Some(Color::TRANSPARENT.into()),
+            border: Border::default().rounded(10.0),
+            ..Style::default()
+        },
+        Status::Hovered => Style {
+            background: Some(TRANSPARENT_WHITE.into()),
+            border: Border::default().rounded(10.0),
+            ..Style::default()
+        },
     }
 }
 
-fn settings_button_style_hovered() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(TRANSPARENT_WHITE)),
-        border: Border::with_radius(10.0),
-        ..Appearance::default()
-    }
-}
-
-fn column_heading_button_style() -> Appearance {
-    Appearance {
+pub fn column_heading(_theme: &AirshipperTheme, _status: Status) -> Style {
+    Style {
         text_color: Color::WHITE,
-        ..Appearance::default()
+        ..Style::default()
     }
 }
 
-fn server_browser_button_style_active() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(CORNFLOWER_BLUE)),
+pub fn server_browser(_theme: &AirshipperTheme, status: Status) -> Style {
+    let active = Style {
+        background: Some(CORNFLOWER_BLUE.into()),
         text_color: Color::WHITE,
-        border: Border::with_radius(4.0),
-        ..Appearance::default()
-    }
-}
-
-fn server_browser_button_style_hovered() -> Appearance {
-    Appearance {
-        background: Some(Background::Color(color_multiply(CORNFLOWER_BLUE, 1.1))),
-        ..server_browser_button_style_active()
+        border: Border::default().rounded(4.0),
+        ..Style::default()
+    };
+    match status {
+        Status::Active | Status::Pressed | Status::Disabled => active,
+        Status::Hovered => Style {
+            background: Some(color_multiply(CORNFLOWER_BLUE, 1.1).into()),
+            ..active
+        },
     }
 }
 
 fn color_multiply(color: Color, multiplier: f32) -> Color {
-    Color::new(
+    Color::from_rgba(
         (color.r * multiplier).clamp(0.0, 1.0),
         (color.g * multiplier).clamp(0.0, 1.0),
         (color.b * multiplier).clamp(0.0, 1.0),

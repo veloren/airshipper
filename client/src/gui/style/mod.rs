@@ -1,4 +1,7 @@
-use iced::{Color, application, application::Appearance};
+use iced::{
+    Color, theme,
+    theme::{Base, Style},
+};
 use lazy_static::lazy_static;
 
 pub mod button;
@@ -48,7 +51,9 @@ lazy_static! {
 }
 
 #[derive(Default)]
-pub struct AirshipperTheme {}
+pub struct AirshipperTheme {
+    pub style: AirshipperThemeStyle,
+}
 
 #[derive(Default)]
 pub enum AirshipperThemeStyle {
@@ -56,13 +61,31 @@ pub enum AirshipperThemeStyle {
     Default,
 }
 
-impl application::StyleSheet for AirshipperTheme {
-    type Style = AirshipperThemeStyle;
+impl Base for AirshipperTheme {
+    fn default(_preference: theme::Mode) -> Self {
+        <AirshipperTheme as Default>::default()
+    }
 
-    fn appearance(&self, _: &Self::Style) -> Appearance {
-        Appearance {
-            background_color: Color::BLACK,
-            text_color: Color::WHITE,
+    fn mode(&self) -> theme::Mode {
+        theme::Mode::None
+    }
+
+    fn base(&self) -> theme::Style {
+        match self.style {
+            AirshipperThemeStyle::Default => Style {
+                background_color: Color::BLACK,
+                text_color: Color::WHITE,
+            },
+        }
+    }
+
+    fn palette(&self) -> Option<theme::Palette> {
+        None
+    }
+
+    fn name(&self) -> &str {
+        match self.style {
+            AirshipperThemeStyle::Default => "Default",
         }
     }
 }

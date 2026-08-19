@@ -6,13 +6,13 @@ use crate::{
             RssFeedComponent, RssFeedComponentMessage, RssFeedData, RssFeedUpdateStatus,
             RssPost,
         },
-        style::{button::ButtonStyle, container::ContainerStyle, text::TextStyle},
+        style,
         views::default::{DefaultViewMessage, Interaction},
         widget::*,
     },
 };
 use iced::{
-    Alignment, Command, ContentFit, Length,
+    ContentFit, Length, Task,
     alignment::{Horizontal, Vertical},
     widget::{button, column, container, image, scrollable, text},
 };
@@ -59,14 +59,17 @@ impl NewsPanelComponent {
     // 16:9 Aspect ratio
     const IMAGE_WIDTH: u32 = 208;
 
-    pub(crate) async fn load_news() -> RssFeedUpdateStatus {
-        RssFeedData::load_feed(Self::FEED_URL, Self::NAME, Self::IMAGE_HEIGHT).await
+    pub(crate) async fn load_news() -> (RssFeedUpdateStatus, Task<DefaultViewMessage>) {
+        let (status, task) =
+            RssFeedData::load_feed(Self::FEED_URL, Self::NAME, Self::IMAGE_HEIGHT).await;
+        (
+            status,
+            task.map(NewsPanelMessage::RssUpdate)
+                .map(DefaultViewMessage::NewsPanel),
+        )
     }
 
-    pub fn update(
-        &mut self,
-        msg: NewsPanelMessage,
-    ) -> Option<Command<DefaultViewMessage>> {
+    pub fn update(&mut self, msg: NewsPanelMessage) -> Option<Task<DefaultViewMessage>> {
         match msg {
             NewsPanelMessage::RssUpdate(rss_msg) => self.handle_update(rss_msg),
         }
@@ -95,9 +98,9 @@ impl NewsPost {
     pub(crate) fn view(&self) -> Element<'_, DefaultViewMessage> {
         let post = &self.rss_post;
 
-        let image_container = if let Some(handle) = &post.image {
+        let image_container = if let Some(allocation) = &post.image {
             container(
-                image(handle.clone())
+                image(allocation.handle())
                     .content_fit(ContentFit::Cover)
                     .width(Length::Fixed(NewsPanelComponent::IMAGE_WIDTH as f32))
                     .height(Length::Fixed(NewsPanelComponent::IMAGE_HEIGHT as f32)),
@@ -106,12 +109,12 @@ impl NewsPost {
             container(
                 text("Loading...")
                     .size(14)
-                    .horizontal_alignment(Horizontal::Center)
-                    .vertical_alignment(Vertical::Center)
+                    .align_x(Horizontal::Center)
+                    .align_y(Vertical::Center)
                     .width(Length::Fill)
                     .height(Length::Fill),
             )
-            .style(ContainerStyle::LoadingBlogPost)
+            .style(style::container::loading_blogpost)
         };
 
         button(
@@ -125,21 +128,21 @@ impl NewsPost {
                     container(
                         column![]
                             .spacing(3)
-                            .push(text("Development").size(12).style(TextStyle::Lilac))
+                            .push(text("Development").size(12).style(style::text::lilac))
                             .push(text(&post.title).size(16).font(POPPINS_LIGHT_FONT))
                             .push(text(&post.description).size(11).line_height(1.5)),
                     )
                     .width(Length::Fill)
-                    .style(ContainerStyle::BlogPost)
+                    .style(style::container::blogpost)
                     .padding(8),
                 )
-                .align_items(Alignment::Center),
+                .align_x(Horizontal::Center),
         )
         .on_press(DefaultViewMessage::Interaction(Interaction::OpenURL(
             post.button_url.clone(),
         )))
         .padding(0)
-        .style(ButtonStyle::Transparent)
+        .style(style::button::transparent)
         .into()
     }
 }

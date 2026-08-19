@@ -1,30 +1,20 @@
 use crate::{
     Result,
-    assets::{
-        CHANGELOG_ICON, POPPINS_BOLD_FONT, POPPINS_LIGHT_FONT, POPPINS_MEDIUM_FONT,
-        UP_RIGHT_ARROW_ICON,
-    },
+    assets::{POPPINS_BOLD_FONT, POPPINS_LIGHT_FONT, POPPINS_MEDIUM_FONT},
     channels::Channel,
     consts,
     consts::GITLAB_MERGED_MR_URL,
     gui::{
-        style::{
-            button::{BrowserButtonStyle, ButtonStyle},
-            container::ContainerStyle,
-            text::TextStyle,
-        },
+        style,
         views::default::{DefaultViewMessage, Interaction},
         widget::*,
     },
     net,
 };
 use iced::{
-    Alignment, Command, Length,
+    Length, Padding, Task,
     alignment::{Horizontal, Vertical},
-    widget::{
-        Image, button, column, container, image, image::Handle, row, scrollable, text,
-        text::LineHeight,
-    },
+    widget::{button, column, container, row, rule, scrollable, text, text::LineHeight},
 };
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ron::{
@@ -264,12 +254,12 @@ impl ChangelogPanelComponent {
     pub fn update(
         &mut self,
         msg: ChangelogPanelMessage,
-    ) -> Option<Command<DefaultViewMessage>> {
+    ) -> Option<Task<DefaultViewMessage>> {
         match msg {
             ChangelogPanelMessage::LoadChangelog(result, channel) => match result {
                 Ok(changelog) => {
                     *self = changelog;
-                    Some(Command::perform(
+                    Some(Task::perform(
                         Self::update_changelog(self.etag.clone(), channel),
                         |update| {
                             DefaultViewMessage::ChangelogPanel(
@@ -280,7 +270,7 @@ impl ChangelogPanelComponent {
                 },
                 Err(e) => {
                     tracing::trace!(?e, "Failed to load changelog");
-                    Some(Command::perform(Self::fetch(channel), |update| {
+                    Some(Task::perform(Self::fetch(channel), |update| {
                         DefaultViewMessage::ChangelogPanel(
                             ChangelogPanelMessage::UpdateChangelog(update),
                         )
@@ -290,7 +280,7 @@ impl ChangelogPanelComponent {
             ChangelogPanelMessage::UpdateChangelog(result) => match result {
                 Ok(Some(changelog)) => {
                     *self = changelog;
-                    Some(Command::perform(Self::save_changelog(self.clone()), |_| {
+                    Some(Task::perform(Self::save_changelog(self.clone()), |_| {
                         DefaultViewMessage::ChangelogPanel(
                             ChangelogPanelMessage::SaveChangelog,
                         )
@@ -322,20 +312,20 @@ impl ChangelogPanelComponent {
         let top_row = container(
             row![]
                 .push(
-                    container(Image::new(Handle::from_memory(CHANGELOG_ICON.to_vec())))
+                    container(icon::changelog())
                         .height(Length::Fill)
                         .width(Length::Shrink)
-                        .padding([0, 10, 0, 0])
+                        .padding(Padding::ZERO.right(10))
                         .align_y(Vertical::Center),
                 )
                 .push(
                     container(
                         text("Latest Patch Notes")
-                            .style(TextStyle::Dark)
+                            .style(style::text::dark)
                             .size(14)
                             .font(POPPINS_MEDIUM_FONT),
                     )
-                    .padding([3, 0, 0, 0])
+                    .padding(Padding::ZERO.top(3))
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .align_y(Vertical::Center),
@@ -346,25 +336,23 @@ impl ChangelogPanelComponent {
                             row![]
                                 .push(
                                     text("Recent Changes")
-                                        .style(TextStyle::LightGrey)
+                                        .style(style::text::light_grey)
                                         .size(10)
                                         .font(POPPINS_MEDIUM_FONT)
-                                        .horizontal_alignment(Horizontal::Center),
+                                        .align_x(Horizontal::Center),
                                 )
-                                .push(image(Handle::from_memory(
-                                    UP_RIGHT_ARROW_ICON.to_vec(),
-                                )))
+                                .push(icon::up_right_arrow())
                                 .spacing(5)
-                                .align_items(Alignment::Center),
+                                .align_y(Vertical::Center),
                         )
                         .on_press(DefaultViewMessage::Interaction(Interaction::OpenURL(
                             GITLAB_MERGED_MR_URL.to_string(),
                         )))
-                        .padding([4, 10, 0, 10])
+                        .padding(Padding::ZERO.top(4).right(10).left(10))
                         .height(Length::Fixed(20.0))
-                        .style(ButtonStyle::Browser(BrowserButtonStyle::Gitlab)),
+                        .style(style::button::browser_gitlab),
                     )
-                    .padding([0, 10, 0, 0])
+                    .padding(Padding::ZERO.right(10))
                     .height(Length::Fill)
                     .align_y(Vertical::Center)
                     .width(Length::Shrink),
@@ -375,7 +363,7 @@ impl ChangelogPanelComponent {
         .align_y(Vertical::Center)
         .padding(10)
         .height(Length::Fixed(50.0))
-        .style(ContainerStyle::ChangelogHeader);
+        .style(style::container::changelog_header);
 
         let col = column![].push(top_row).push(
             column![].push(
@@ -392,7 +380,7 @@ impl ChangelogPanelComponent {
                 )
                 .height(Length::Fill)
                 .width(Length::Fill)
-                .style(ContainerStyle::Dark),
+                .style(style::container::dark),
             ),
         );
 
@@ -423,9 +411,9 @@ impl ChangelogVersion {
             column![]
                 .push(
                     container(text(version_string).font(POPPINS_BOLD_FONT).size(20))
-                        .padding([20, 0, 6, 33]),
+                        .padding(Padding::ZERO.top(20).bottom(10).left(33)),
                 )
-                .push(Rule::horizontal(8)),
+                .push(rule::horizontal(1)),
         );
 
         for note in &self.notes {
@@ -458,7 +446,7 @@ impl ChangelogVersion {
                                     .line_height(LineHeight::Absolute(16.into())),
                             ),
                     )
-                    .padding([0, 0, 1, 10]),
+                    .padding(Padding::ZERO.bottom(1).left(10)),
                 );
             }
 

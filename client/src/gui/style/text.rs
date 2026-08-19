@@ -3,35 +3,45 @@ use crate::gui::style::{
 };
 use iced::{
     Color,
-    widget::{text, text::Appearance},
+    widget::text::{Catalog, Style, StyleFn},
 };
 
-#[derive(Debug, Clone, Copy, Default)]
-pub enum TextStyle {
-    #[default]
-    Normal,
-    Dark,
-    LightGrey,
-    BrightOrange,
-    TomatoRed,
-    Lilac,
-}
+impl Catalog for AirshipperTheme {
+    type Class<'a> = StyleFn<'a, Self>;
 
-impl text::StyleSheet for AirshipperTheme {
-    type Style = TextStyle;
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(normal)
+    }
 
-    fn appearance(&self, style: Self::Style) -> Appearance {
-        match style {
-            TextStyle::Normal => text_appearance(Color::WHITE),
-            TextStyle::Dark => text_appearance(DARK_WHITE),
-            TextStyle::LightGrey => text_appearance(LIGHT_GREY),
-            TextStyle::BrightOrange => text_appearance(BRIGHT_ORANGE),
-            TextStyle::TomatoRed => text_appearance(TOMATO_RED),
-            TextStyle::Lilac => text_appearance(LILAC),
-        }
+    fn style(&self, item: &Self::Class<'_>) -> Style {
+        item(self)
     }
 }
 
-fn text_appearance(color: Color) -> Appearance {
-    Appearance { color: Some(color) }
+fn text_appearance(color: Color) -> Style {
+    Style { color: Some(color) }
+}
+
+pub fn normal(_theme: &AirshipperTheme) -> Style {
+    text_appearance(Color::WHITE)
+}
+
+pub fn dark(_theme: &AirshipperTheme) -> Style {
+    text_appearance(DARK_WHITE)
+}
+
+pub fn light_grey(_theme: &AirshipperTheme) -> Style {
+    text_appearance(LIGHT_GREY)
+}
+
+pub fn bright_orange(_theme: &AirshipperTheme) -> Style {
+    text_appearance(BRIGHT_ORANGE)
+}
+
+pub fn tomato_red(_theme: &AirshipperTheme) -> Style {
+    text_appearance(TOMATO_RED)
+}
+
+pub fn lilac(_theme: &AirshipperTheme) -> Style {
+    text_appearance(LILAC)
 }

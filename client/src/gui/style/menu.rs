@@ -1,34 +1,32 @@
-use crate::gui::style::{
-    AirshipperTheme, LIGHT_NAVY_BLUE, NAVY_BLUE, pick_list::PickListStyle,
+use crate::gui::style::{AirshipperTheme, LIGHT_NAVY_BLUE, NAVY_BLUE};
+use iced::{
+    Border, Color,
+    overlay::menu::{Catalog, Style, StyleFn},
 };
-use iced::{Background, Border, Color, overlay, overlay::menu::Appearance};
 
-#[derive(Copy, Clone, Debug, Default)]
-pub enum MenuStyle {
-    #[default]
-    Default,
-}
+impl Catalog for AirshipperTheme {
+    type Class<'a> = StyleFn<'a, Self>;
 
-impl From<PickListStyle> for MenuStyle {
-    fn from(_: PickListStyle) -> Self {
-        MenuStyle::Default
+    fn default<'a>() -> <Self as Catalog>::Class<'a> {
+        Box::new(default)
+    }
+
+    fn style(&self, class: &<Self as Catalog>::Class<'_>) -> Style {
+        class(self)
     }
 }
 
-impl overlay::menu::StyleSheet for AirshipperTheme {
-    type Style = MenuStyle;
-
-    fn appearance(&self, _: &Self::Style) -> Appearance {
-        Appearance {
-            text_color: Color::WHITE,
-            background: Background::Color(NAVY_BLUE),
-            selected_background: Background::Color(LIGHT_NAVY_BLUE),
-            selected_text_color: Color::WHITE,
-            border: Border {
-                color: Color::WHITE,
-                width: 0.0,
-                radius: 0.0.into(),
-            },
-        }
+pub fn default(_theme: &AirshipperTheme) -> Style {
+    Style {
+        text_color: Color::WHITE,
+        background: NAVY_BLUE.into(),
+        selected_background: LIGHT_NAVY_BLUE.into(),
+        selected_text_color: Color::WHITE,
+        border: Border {
+            color: Color::WHITE,
+            width: 0.0,
+            radius: 0.0.into(),
+        },
+        shadow: Default::default(),
     }
 }

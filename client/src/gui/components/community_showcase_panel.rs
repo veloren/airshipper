@@ -6,16 +6,16 @@ use crate::{
             RssFeedComponent, RssFeedComponentMessage, RssFeedData, RssFeedUpdateStatus,
             RssPost,
         },
-        style::{button::ButtonStyle, container::ContainerStyle},
+        style,
         views::default::{DefaultViewMessage, Interaction},
         widget::*,
     },
 };
 use iced::{
-    Command, ContentFit, Length,
+    ContentFit, Fill, Length, Task,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, Space, button, column, container, row, text, tooltip, tooltip::Position,
+        Image, button, column, container, row, space, text, tooltip, tooltip::Position,
     },
 };
 use rand::{prelude::SliceRandom, rng};
@@ -81,14 +81,21 @@ impl CommunityShowcaseComponent {
     // 16:9 Aspect ratio
     const IMAGE_WIDTH: u32 = 320;
 
-    pub(crate) async fn load_community_posts() -> RssFeedUpdateStatus {
-        RssFeedData::load_feed(Self::FEED_URL, Self::NAME, Self::IMAGE_HEIGHT).await
+    pub(crate) async fn load_community_posts()
+    -> (RssFeedUpdateStatus, Task<DefaultViewMessage>) {
+        let (status, task) =
+            RssFeedData::load_feed(Self::FEED_URL, Self::NAME, Self::IMAGE_HEIGHT).await;
+        (
+            status,
+            task.map(CommunityShowcasePanelMessage::RssUpdate)
+                .map(DefaultViewMessage::CommunityShowcasePanel),
+        )
     }
 
     pub fn update(
         &mut self,
         msg: CommunityShowcasePanelMessage,
-    ) -> Option<Command<DefaultViewMessage>> {
+    ) -> Option<Task<DefaultViewMessage>> {
         match msg {
             CommunityShowcasePanelMessage::RssUpdate(rss_msg) => {
                 self.handle_update(rss_msg)
@@ -110,14 +117,17 @@ impl CommunityShowcaseComponent {
 
     pub fn view(&self) -> Element<'_, DefaultViewMessage> {
         let current_post = if let Some(post) = self.posts.get(self.offset) {
-            container(post.view()).width(Length::Fill)
+            container(post.view())
+                .width(Length::Fixed(Self::IMAGE_WIDTH as f32))
+                .padding([5, 0])
         } else {
             container(text("Nothing to show"))
         };
 
         let prev_button = button(text("<< Prev").size(14))
-            .style(ButtonStyle::NextPrev)
+            .style(style::button::next_prev)
             .width(Length::Shrink)
+            .padding(5)
             .on_press(DefaultViewMessage::CommunityShowcasePanel(
                 CommunityShowcasePanelMessage::PostOffsetChange(
                     PostOffsetChange::Decrement,
@@ -125,8 +135,9 @@ impl CommunityShowcaseComponent {
             ));
 
         let next_button = button(text("Next >>").size(14))
-            .style(ButtonStyle::NextPrev)
+            .style(style::button::next_prev)
             .width(Length::Shrink)
+            .padding(5)
             .on_press(DefaultViewMessage::CommunityShowcasePanel(
                 CommunityShowcasePanelMessage::PostOffsetChange(
                     PostOffsetChange::Increment,
@@ -134,15 +145,13 @@ impl CommunityShowcaseComponent {
             ));
 
         let button_row = if self.offset == 0 {
-            row![]
-                .push(Space::with_width(Length::Fill))
-                .push(next_button)
+            row![].push(space().width(Fill)).push(next_button)
         } else if self.offset == max(self.posts.len(), 1) - 1 {
             row![].push(prev_button)
         } else {
             row![]
                 .push(prev_button)
-                .push(Space::with_width(Length::Fill))
+                .push(space().width(Fill))
                 .push(next_button)
         };
 
@@ -166,11 +175,11 @@ impl CommunityPost {
     pub(crate) fn view(&self) -> Element<'_, DefaultViewMessage> {
         let post = &self.rss_post;
 
-        let image_container = if let Some(handle) = &post.image {
+        let image_container = if let Some(allocation) = &post.image {
             container(
                 tooltip(
                     container(
-                        Image::new(handle.clone())
+                        Image::new(allocation.handle())
                             .content_fit(ContentFit::Cover)
                             .height(Length::Fixed(
                                 CommunityShowcaseComponent::IMAGE_HEIGHT as f32,
@@ -182,14 +191,14 @@ impl CommunityPost {
                     text(&post.title).size(14),
                     Position::Right,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
         } else {
             container(text("Loading..."))
                 .align_x(Horizontal::Center)
                 .align_y(Vertical::Center)
-                .style(ContainerStyle::LoadingBlogPost)
+                .style(style::container::loading_blogpost)
                 .height(Length::Fixed(
                     CommunityShowcaseComponent::IMAGE_HEIGHT as f32,
                 ))
@@ -198,13 +207,14 @@ impl CommunityPost {
                 ))
         };
         button(image_container)
-            .style(ButtonStyle::Transparent)
+            .style(style::button::transparent)
             .on_press(DefaultViewMessage::Interaction(Interaction::OpenURL(
                 post.button_url.clone(),
             )))
             .width(Length::Fixed(
                 CommunityShowcaseComponent::IMAGE_WIDTH as f32,
             ))
+            .padding(0)
             .into()
     }
 }

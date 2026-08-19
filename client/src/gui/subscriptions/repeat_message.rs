@@ -2,18 +2,15 @@ use std::{hash::Hash, time::Duration};
 
 use iced::{
     Subscription,
-    advanced::{
-        Hasher,
-        subscription::{EventStream, Recipe},
-    },
+    advanced::subscription::{self, EventStream, Hasher, Recipe},
     futures::{self, stream::BoxStream},
 };
 
-pub fn stream<M>(interval: Duration, message: M) -> iced::Subscription<M>
+pub fn stream<M>(interval: Duration, message: M) -> Subscription<M>
 where
     M: Clone + Send + Sync + 'static,
 {
-    Subscription::from_recipe(RepeatMessageStream(interval, message))
+    subscription::from_recipe(RepeatMessageStream(interval, message))
 }
 
 struct RepeatMessageStream<M>(Duration, M);

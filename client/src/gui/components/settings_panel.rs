@@ -1,13 +1,13 @@
+use iced::Alignment;
 use std::path::PathBuf;
 
 use crate::{
     Result,
-    assets::{BOOK_ICON, FOLDER_ICON},
     channels::{Channel, Channels},
     gui::{
         components::GamePanelMessage,
         custom_widgets::heading_with_rule,
-        style::{button::ButtonStyle, container::ContainerStyle, text::TextStyle},
+        style,
         views::{
             Action,
             default::{DefaultViewMessage, Interaction},
@@ -18,11 +18,11 @@ use crate::{
     profiles::Profile,
 };
 use iced::{
-    Alignment, Command, Length,
-    alignment::Horizontal,
+    Length, Padding, Task,
+    alignment::{Horizontal, Vertical},
     widget::{
-        Image, button, column, container, image, image::Handle, pick_list, row, text,
-        text_input, tooltip, tooltip::Position,
+        button, column, container, pick_list, row, text, text_input, tooltip,
+        tooltip::Position,
     },
 };
 use tracing::debug;
@@ -52,12 +52,12 @@ impl SettingsPanelComponent {
         &mut self,
         msg: SettingsPanelMessage,
         active_profile: &Profile,
-    ) -> Option<Command<DefaultViewMessage>> {
+    ) -> Option<Task<DefaultViewMessage>> {
         match msg {
             SettingsPanelMessage::WgpuGraphicsDeviceChanged(new_device) => {
                 let mut profile = active_profile.clone();
                 profile.wgpu_device = new_device;
-                Some(Command::perform(
+                Some(Task::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
@@ -67,14 +67,14 @@ impl SettingsPanelComponent {
                 let mut profile = active_profile.clone();
                 profile.server = new_server;
                 let profile2 = profile.clone();
-                Some(Command::batch(vec![
-                    Command::perform(
+                Some(Task::batch(vec![
+                    Task::perform(
                         async { Action::UpdateProfile(profile2) },
                         DefaultViewMessage::Action,
                     ),
-                    Command::perform(async {}, |_| {
-                        DefaultViewMessage::GamePanel(GamePanelMessage::StartUpdate)
-                    }),
+                    Task::done(DefaultViewMessage::GamePanel(
+                        GamePanelMessage::StartUpdate,
+                    )),
                 ]))
             },
             SettingsPanelMessage::ChannelChanged(new_channel) => {
@@ -82,20 +82,20 @@ impl SettingsPanelComponent {
                 let mut profile = active_profile.clone();
                 profile.channel = new_channel;
                 let profile2 = profile.clone();
-                Some(Command::batch(vec![
-                    Command::perform(
+                Some(Task::batch(vec![
+                    Task::perform(
                         async { Action::UpdateProfile(profile2) },
                         DefaultViewMessage::Action,
                     ),
-                    Command::perform(async {}, |_| {
-                        DefaultViewMessage::GamePanel(GamePanelMessage::StartUpdate)
-                    }),
+                    Task::done(DefaultViewMessage::GamePanel(
+                        GamePanelMessage::StartUpdate,
+                    )),
                 ]))
             },
             SettingsPanelMessage::WgpuBackendChanged(wgpu_backend) => {
                 let mut profile = active_profile.clone();
                 profile.wgpu_backend = wgpu_backend;
-                Some(Command::perform(
+                Some(Task::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
@@ -103,7 +103,7 @@ impl SettingsPanelComponent {
             SettingsPanelMessage::LogLevelChanged(log_level) => {
                 let mut profile = active_profile.clone();
                 profile.log_level = log_level;
-                Some(Command::perform(
+                Some(Task::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
@@ -117,7 +117,7 @@ impl SettingsPanelComponent {
             SettingsPanelMessage::EnvVarsChanged(vars) => {
                 let mut profile = active_profile.clone();
                 profile.env_vars = vars;
-                Some(Command::perform(
+                Some(Task::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
@@ -125,12 +125,12 @@ impl SettingsPanelComponent {
             SettingsPanelMessage::AssetsOverrideChanged(assets) => {
                 let mut profile = active_profile.clone();
                 profile.assets_override = (!assets.is_empty()).then_some(assets);
-                Some(Command::perform(
+                Some(Task::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
             },
-            SettingsPanelMessage::AssetsOverridePick => Some(Command::perform(
+            SettingsPanelMessage::AssetsOverridePick => Some(Task::perform(
                 async {
                     rfd::AsyncFileDialog::new()
                         .set_title("Select a folder where your asset overrides live")
@@ -151,7 +151,7 @@ impl SettingsPanelComponent {
                 let assets = path.to_string_lossy().into_owned();
                 let assets = assets.trim().to_owned();
                 profile.assets_override = (!assets.is_empty()).then_some(assets);
-                Some(Command::perform(
+                Some(Task::perform(
                     async { Action::UpdateProfile(profile) },
                     DefaultViewMessage::Action,
                 ))
@@ -176,13 +176,17 @@ impl SettingsPanelComponent {
         active_profile: &'a Profile,
     ) -> Element<'a, DefaultViewMessage> {
         const PICK_LIST_PADDING: u16 = 7;
-        const FONT_SIZE: u16 = 12;
+        const FONT_SIZE: u32 = 12;
 
         let graphics_device = column![]
             .spacing(5)
             .push(
-                container(text("GRAPHICS DEVICE").size(10).style(TextStyle::LightGrey))
-                    .padding([0, 0, 0, 3]),
+                container(
+                    text("GRAPHICS DEVICE")
+                        .size(10)
+                        .style(style::text::light_grey),
+                )
+                .padding(Padding::ZERO.left(3)),
             )
             .push(
                 tooltip(
@@ -208,7 +212,7 @@ impl SettingsPanelComponent {
                     .size(14),
                     Position::Bottom,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
             .width(Length::FillPortion(1));
@@ -216,8 +220,12 @@ impl SettingsPanelComponent {
         let graphics_mode = column![]
             .spacing(5)
             .push(
-                container(text("GRAPHICS MODE").size(10).style(TextStyle::LightGrey))
-                    .padding([0, 0, 0, 3]),
+                container(
+                    text("GRAPHICS MODE")
+                        .size(10)
+                        .style(style::text::light_grey),
+                )
+                .padding(Padding::ZERO.left(3)),
             )
             .push(
                 tooltip(
@@ -243,7 +251,7 @@ impl SettingsPanelComponent {
                     .size(14),
                     Position::Bottom,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
             .width(Length::FillPortion(1));
@@ -254,25 +262,27 @@ impl SettingsPanelComponent {
                 row![]
                     .spacing(5)
                     .push(
-                        container(text("LOG LEVEL").size(10).style(TextStyle::LightGrey))
-                            .padding([0, 0, 0, 3]),
+                        container(
+                            text("LOG LEVEL").size(10).style(style::text::light_grey),
+                        )
+                        .padding(Padding::ZERO.left(3)),
                     )
                     .push(
                         container(
-                            button(
-                                image(Handle::from_memory(FOLDER_ICON.to_vec()))
+                            button(icon::folder().map(|image| {
+                                image
                                     .height(Length::Fixed(15.0))
-                                    .width(Length::Fixed(15.0)),
-                            )
+                                    .width(Length::Fixed(15.0))
+                            }))
                             .on_press(DefaultViewMessage::SettingsPanel(
                                 SettingsPanelMessage::OpenLogsPressed,
                             ))
                             .padding(0)
-                            .style(ButtonStyle::Transparent),
+                            .style(style::button::transparent),
                         )
                         .align_x(Horizontal::Right),
                     )
-                    .align_items(Alignment::Center),
+                    .align_y(Vertical::Center),
             )
             .push(
                 tooltip(
@@ -298,7 +308,7 @@ impl SettingsPanelComponent {
                     .size(14),
                     Position::Bottom,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
             .width(Length::FillPortion(1));
@@ -306,8 +316,8 @@ impl SettingsPanelComponent {
         let server_picker = column![]
             .spacing(5)
             .push(
-                container(text("SERVER").size(10).style(TextStyle::LightGrey))
-                    .padding([0, 0, 0, 3]),
+                container(text("SERVER").size(10).style(style::text::light_grey))
+                    .padding(Padding::ZERO.left(3)),
             )
             .push(
                 tooltip(
@@ -325,7 +335,7 @@ impl SettingsPanelComponent {
                     text("The download server used for game downloads").size(14),
                     Position::Bottom,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
             .width(Length::FillPortion(1));
@@ -340,9 +350,11 @@ impl SettingsPanelComponent {
                     .spacing(5)
                     .push(
                         container(
-                            text("ASSETS OVERRIDE").size(10).style(TextStyle::LightGrey),
+                            text("ASSETS OVERRIDE")
+                                .size(10)
+                                .style(style::text::light_grey),
                         )
-                        .padding([0, 0, 0, 3]),
+                        .padding(Padding::ZERO.left(3)),
                     )
                     .push(help_link_button(help_link)),
             )
@@ -364,19 +376,19 @@ impl SettingsPanelComponent {
                             })
                             .padding(PICK_LIST_PADDING)
                             .size(FONT_SIZE),
-                            button(
-                                image(Handle::from_memory(FOLDER_ICON.to_owned()))
+                            button(icon::folder().map(|image| {
+                                image
                                     .height(Length::Fixed(15.0))
                                     .width(Length::Fixed(15.0))
-                            )
+                            }))
                             .on_press(DefaultViewMessage::SettingsPanel(
                                 SettingsPanelMessage::AssetsOverridePick,
                             ))
                             .padding(PICK_LIST_PADDING)
-                            .style(ButtonStyle::Transparent),
+                            .style(style::button::transparent)
                         ]
                         .spacing(5)
-                        .align_items(Alignment::Center),
+                        .align_y(Alignment::Center),
                     )
                     .height(Length::Fixed(30.0)),
                     text(
@@ -389,7 +401,7 @@ impl SettingsPanelComponent {
                 .style(
                     // TODO: this and env_vars should probably scream at you for putting
                     // invalid data in
-                    ContainerStyle::Tooltip,
+                    style::container::tooltip,
                 )
                 .gap(5),
             )
@@ -405,9 +417,9 @@ impl SettingsPanelComponent {
                         container(
                             text("ENVIRONMENT VARIABLES")
                                 .size(10)
-                                .style(TextStyle::LightGrey),
+                                .style(style::text::light_grey),
                         )
-                        .padding([0, 0, 0, 3]),
+                        .padding(Padding::ZERO.left(3)),
                     )
                     .push(help_link_button(help_link)),
             )
@@ -427,7 +439,7 @@ impl SettingsPanelComponent {
                     text("Environment variables set when running Voxygen").size(14),
                     Position::Bottom,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
             .width(Length::FillPortion(2));
@@ -435,8 +447,8 @@ impl SettingsPanelComponent {
         let channel_picker = column![]
             .spacing(5)
             .push(
-                container(text("CHANNEL").size(10).style(TextStyle::LightGrey))
-                    .padding([0, 0, 0, 3]),
+                container(text("CHANNEL").size(10).style(style::text::light_grey))
+                    .padding(Padding::ZERO.left(3)),
             )
             .push(
                 tooltip(
@@ -458,7 +470,7 @@ impl SettingsPanelComponent {
                     text("The download channel used for game downloads").size(14),
                     Position::Bottom,
                 )
-                .style(ContainerStyle::Tooltip)
+                .style(style::container::tooltip)
                 .gap(5),
             )
             .width(Length::FillPortion(1));
@@ -466,14 +478,14 @@ impl SettingsPanelComponent {
         let first_row = container(
             row![]
                 .spacing(10)
-                .align_items(Alignment::End)
+                .align_y(Vertical::Bottom)
                 .push(graphics_device),
         );
 
         let second_row = container(
             row![]
                 .spacing(10)
-                .align_items(Alignment::End)
+                .align_y(Vertical::Bottom)
                 .push(graphics_mode)
                 .push(log_level)
                 .push(server_picker),
@@ -482,7 +494,7 @@ impl SettingsPanelComponent {
         let third_row = container(row![].spacing(10).push(env_vars).push(channel_picker));
 
         let fourth_row =
-            container(row![].align_items(Alignment::End).push(assets_override));
+            container(row![].align_y(Vertical::Bottom).push(assets_override));
 
         let col = column![]
             .spacing(10)
@@ -500,12 +512,11 @@ impl SettingsPanelComponent {
 
 fn help_link_button(url: String) -> Element<'static, DefaultViewMessage> {
     button(
-        Image::new(Handle::from_memory(BOOK_ICON.to_vec()))
-            .height(Length::Fixed(15.0))
-            .width(Length::Fixed(15.0)),
+        icon::book()
+            .map(|image| image.height(Length::Fixed(15.0)).width(Length::Fixed(15.0))),
     )
     .on_press(DefaultViewMessage::Interaction(Interaction::OpenURL(url)))
     .padding(0)
-    .style(ButtonStyle::Transparent)
+    .style(style::button::transparent)
     .into()
 }

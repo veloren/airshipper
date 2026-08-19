@@ -1,6 +1,9 @@
 use crate::{ClientError, Result, fs, gui::views::default::DefaultViewMessage, net};
 use futures_util::future::join_all;
-use iced::{Command, widget::image::Handle};
+use iced::{
+    Task,
+    widget::image::{Allocation, Handle, allocate},
+};
 use image::{ExtendedColorType, ImageFormat, imageops::FilterType};
 use ron::{
     de::from_str,
@@ -22,11 +25,14 @@ pub enum RssFeedUpdateStatus {
 #[derive(Clone, Debug)]
 pub enum RssFeedComponentMessage {
     UpdateRssFeed(RssFeedUpdateStatus),
-    ImageFetched { url: String, result: Result<Handle> },
+    ImageFetched {
+        url: String,
+        result: std::result::Result<Allocation, iced::widget::image::Error>,
+    },
 }
 
 /// Allows a component to handle updates to an RSS feed that it owns
-pub trait RssFeedComponent {
+pub trait RssFeedComponent: 'static {
     const IMAGE_HEIGHT: u32;
     const NAME: &str;
     const FEED_URL: &str;
@@ -47,31 +53,36 @@ pub trait RssFeedComponent {
     fn handle_update(
         &mut self,
         msg: RssFeedComponentMessage,
-    ) -> Option<Command<DefaultViewMessage>> {
+    ) -> Option<Task<DefaultViewMessage>> {
         match msg {
             RssFeedComponentMessage::UpdateRssFeed(status) => match status {
                 RssFeedUpdateStatus::Loaded(feed_data) => {
                     let etag = feed_data.etag.clone();
                     self.store_feed(feed_data);
-                    Some(Command::perform(
-                        RssFeedData::update_feed(
-                            Self::FEED_URL,
-                            Self::NAME,
-                            Self::IMAGE_HEIGHT,
-                            etag,
-                        ),
-                        move |status| {
-                            Self::rss_feed_message(
-                                RssFeedComponentMessage::UpdateRssFeed(status),
+                    Some(
+                        Task::future(async {
+                            let (status, task) = RssFeedData::update_feed(
+                                Self::FEED_URL,
+                                Self::NAME,
+                                Self::IMAGE_HEIGHT,
+                                etag,
                             )
-                        },
-                    ))
+                            .await;
+                            (
+                                Self::rss_feed_message(
+                                    RssFeedComponentMessage::UpdateRssFeed(status),
+                                ),
+                                task.map(Self::rss_feed_message),
+                            )
+                        })
+                        .then(|(message, task)| Task::batch([Task::done(message), task])),
+                    )
                 },
                 RssFeedUpdateStatus::Updated(feed_data) => {
                     self.store_feed(feed_data.clone());
                     self.after_rss_feed_updated();
 
-                    Some(Command::perform(feed_data.save_feed(Self::NAME), |_| {
+                    Some(Task::perform(feed_data.save_feed(Self::NAME), |_| {
                         Self::rss_feed_message(RssFeedComponentMessage::UpdateRssFeed(
                             RssFeedUpdateStatus::Saved,
                         ))
@@ -86,7 +97,7 @@ pub trait RssFeedComponent {
                     // should reside in the cache if it hasn't been
                     // cleared.
                     let posts = self.posts();
-                    let commands: Vec<Command<DefaultViewMessage>> = posts
+                    let commands: Vec<Task<DefaultViewMessage>> = posts
                         .iter()
                         .filter_map(|post| {
                             // Filter out posts that we already have the image for, or
@@ -95,29 +106,38 @@ pub trait RssFeedComponent {
                                 return None;
                             }
                             let url = post.image_url.as_ref().unwrap().to_owned();
-                            Some(Command::perform(
-                                RssPost::fetch_image(
-                                    url.clone(),
-                                    Self::NAME,
-                                    post.image_cache_name(),
-                                    Self::IMAGE_HEIGHT,
-                                ),
-                                move |result| {
-                                    Self::rss_feed_message(
+                            let image_cache_name = post.image_cache_name();
+                            Some(
+                                Task::future({
+                                    let url = url.clone();
+                                    async move {
+                                        RssPost::fetch_image(
+                                            url.as_str(),
+                                            Self::NAME,
+                                            image_cache_name,
+                                            Self::IMAGE_HEIGHT,
+                                        )
+                                        .await
+                                    }
+                                })
+                                .map(Result::ok)
+                                .and_then(allocate)
+                                .then(move |result| {
+                                    Task::done(Self::rss_feed_message(
                                         RssFeedComponentMessage::ImageFetched {
-                                            url,
+                                            url: url.clone(),
                                             result,
                                         },
-                                    )
-                                },
-                            ))
+                                    ))
+                                }),
+                            )
                         })
                         .collect();
 
                     self.after_rss_feed_updated();
 
                     debug!("Fetching images for {} cached blog posts", commands.len());
-                    Some(Command::batch(commands))
+                    Some(Task::batch(commands))
                 },
                 RssFeedUpdateStatus::UpdateFailed(e) => {
                     error!(?e, "Failed to fetch RSS feed");
@@ -125,14 +145,15 @@ pub trait RssFeedComponent {
                 },
             },
             RssFeedComponentMessage::ImageFetched { result, url } => {
-                if let Ok(handle) = result
-                    && let Some(post) = self
-                        .posts_mut()
-                        .iter_mut()
-                        .filter(|post| post.image_url.is_some())
-                        .find(|post| post.image_url.as_ref().unwrap() == &url)
+                if let Ok(allocation) = result.map_err(|e| {
+                    tracing::error!("Failed to allocate rss feed image memory: {:?}", e)
+                }) && let Some(post) = self
+                    .posts_mut()
+                    .iter_mut()
+                    .filter(|post| post.image_url.is_some())
+                    .find(|post| post.image_url.as_ref().unwrap() == &url)
                 {
-                    post.image = Some(handle);
+                    post.image = Some(allocation);
                 }
 
                 None
@@ -156,7 +177,7 @@ impl RssFeedData {
         name: &str,
         height: u32,
         local_version: String,
-    ) -> RssFeedUpdateStatus {
+    ) -> (RssFeedUpdateStatus, Task<RssFeedComponentMessage>) {
         let fetch = move |local_version: String| async move {
             match net::query_etag(feed_url).await? {
                 Some(remote_version) => {
@@ -168,12 +189,11 @@ impl RssFeedData {
                             local_version,
                             remote_version
                         );
-                        Ok(RssFeedUpdateStatus::Updated(
-                            Self::fetch(feed_url, name, height).await?,
-                        ))
+                        let (feed, task) = Self::fetch(feed_url, name, height).await?;
+                        Ok((RssFeedUpdateStatus::Updated(feed), task))
                     } else {
                         debug!(?feed_url, "RSS feed up-to-date.");
-                        Ok(RssFeedUpdateStatus::NoUpdateRequired)
+                        Ok((RssFeedUpdateStatus::NoUpdateRequired, Task::none()))
                     }
                 },
                 // If no etag was found, perform a full update
@@ -182,16 +202,15 @@ impl RssFeedData {
                         ?feed_url,
                         "No etag found for RSS feed, assuming an update is required."
                     );
-                    Ok(RssFeedUpdateStatus::Updated(
-                        Self::fetch(feed_url, name, height).await?,
-                    ))
+                    let (feed, task) = Self::fetch(feed_url, name, height).await?;
+                    Ok((RssFeedUpdateStatus::Updated(feed), task))
                 },
             }
         };
 
         fetch(local_version)
             .await
-            .unwrap_or_else(RssFeedUpdateStatus::UpdateFailed)
+            .unwrap_or_else(|e| (RssFeedUpdateStatus::UpdateFailed(e), Task::none()))
     }
 
     fn cache_file(name: &str) -> std::path::PathBuf {
@@ -202,10 +221,12 @@ impl RssFeedData {
         feed_url: &str,
         name: &str,
         height: u32,
-    ) -> RssFeedUpdateStatus {
+    ) -> (RssFeedUpdateStatus, Task<RssFeedComponentMessage>) {
         match tokio::fs::read_to_string(&Self::cache_file(name)).await {
             Ok(string) => match from_str(&string) {
-                Ok(feed_data) => return RssFeedUpdateStatus::Loaded(feed_data),
+                Ok(feed_data) => {
+                    return (RssFeedUpdateStatus::Loaded(feed_data), Task::none());
+                },
                 Err(e) => tracing::trace!(
                     ?e,
                     "Failed to deserialize cached feed data for feed: {}",
@@ -218,8 +239,8 @@ impl RssFeedData {
         }
 
         match Self::fetch(feed_url, name, height).await {
-            Ok(feed_data) => RssFeedUpdateStatus::Updated(feed_data),
-            Err(e) => RssFeedUpdateStatus::UpdateFailed(e),
+            Ok((feed_data, task)) => (RssFeedUpdateStatus::Updated(feed_data), task),
+            Err(e) => (RssFeedUpdateStatus::UpdateFailed(e), Task::none()),
         }
     }
 
@@ -239,28 +260,41 @@ impl RssFeedData {
         }
     }
 
-    async fn fetch(feed_url: &str, name: &str, height: u32) -> Result<RssFeedData> {
+    async fn fetch(
+        feed_url: &str,
+        name: &str,
+        height: u32,
+    ) -> Result<(RssFeedData, Task<RssFeedComponentMessage>)> {
         use std::io::BufReader;
 
         let feed_response = net::query(feed_url).await?;
         let etag = net::get_etag(&feed_response);
         let feed = Channel::read_from(BufReader::new(&feed_response.bytes().await?[..]))?;
 
-        let futs = feed
-            .items()
-            .iter()
+        let posts = feed
+            .items
+            .into_iter()
             // TODO: Currently we want 15 blog posts and 15 community showcase posts - if this is ever not the case
             // then this number will need parameterising.
             .take(15)
-            .map(move |item| async move {
-                let mut post = RssPost::from(item);
-                if let Some(url) = &post.image_url && let Ok(handle) = RssPost::fetch_image(url.to_owned(), name, post.image_cache_name(), height).await {
-                    post.image = Some(handle);
-                };
-                post
-            })
+            .map(RssPost::from)
             .collect::<Vec<_>>();
-        let posts = join_all(futs).await;
+
+        let tasks = join_all(posts.iter().map(|post| async {
+            if let Some(url) = &post.image_url
+                && let Ok(handle) =
+                    RssPost::fetch_image(url, name, post.image_cache_name(), height).await
+            {
+                let url = url.clone();
+                allocate(handle).then(move |result| {
+                    let url = url.clone();
+                    Task::done(RssFeedComponentMessage::ImageFetched { url, result })
+                })
+            } else {
+                Task::none()
+            }
+        }))
+        .await;
 
         if let Ok(dir) = std::fs::read_dir(RssPost::cache_base_path(name)) {
             for file in dir.flatten() {
@@ -272,7 +306,7 @@ impl RssFeedData {
             }
         }
 
-        Ok(RssFeedData { posts, etag })
+        Ok((RssFeedData { posts, etag }, Task::batch(tasks)))
     }
 }
 
@@ -284,7 +318,7 @@ pub struct RssPost {
     pub button_url: String,
     pub image_url: Option<String>,
     #[serde(skip)]
-    pub image: Option<Handle>,
+    pub image: Option<Allocation>,
 }
 
 impl RssPost {
@@ -297,7 +331,7 @@ impl RssPost {
     /// currently utilized version (0.12) of iced where images scrolled out of view
     /// are constantly being re-decoded, significantly lagging the UI.
     pub async fn fetch_image(
-        url: String,
+        url: &str,
         feed_name: &str,
         image_cache_name: String,
         height: u32,
@@ -314,14 +348,14 @@ impl RssPost {
                 image_cache_path.to_string_lossy()
             );
             let image = image::load_from_memory(&cached_bytes)?.into_rgba8();
-            return Ok(Handle::from_pixels(
+            return Ok(Handle::from_rgba(
                 image.width(),
                 image.height(),
                 image.into_raw(),
             ));
         }
 
-        match crate::net::client::WEB_CLIENT.get(&url).send().await {
+        match crate::net::client::WEB_CLIENT.get(url).send().await {
             Ok(response) => match response.bytes().await {
                 Ok(bytes) => match image::load_from_memory(&bytes) {
                     Ok(image) => {
@@ -345,7 +379,7 @@ impl RssPost {
                             ExtendedColorType::Rgba8,
                             ImageFormat::Png,
                         )?;
-                        Ok(Handle::from_pixels(
+                        Ok(Handle::from_rgba(
                             rgba8.width(),
                             rgba8.height(),
                             rgba8.into_raw(),
@@ -381,7 +415,7 @@ impl RssPost {
         self.title.clone()
     }
 
-    fn process_description(desc: Option<&str>) -> String {
+    fn process_description(desc: Option<String>) -> String {
         match desc {
             Some(desc) => {
                 let wrapped_html = html2text::from_read(desc.as_bytes(), 400);
@@ -396,6 +430,8 @@ impl RssPost {
                             output
                         });
                     strip_markdown::strip_markdown(&stripped_html)
+                        .trim_end()
+                        .to_owned()
                 } else {
                     "HTML parsing failed.".into()
                 }
@@ -405,12 +441,12 @@ impl RssPost {
     }
 }
 
-impl From<&rss::Item> for RssPost {
-    fn from(item: &rss::Item) -> Self {
+impl From<rss::Item> for RssPost {
+    fn from(item: rss::Item) -> Self {
         let mut post = RssPost {
-            title: item.title().unwrap_or("Missing title").into(),
-            description: Self::process_description(item.description()),
-            button_url: item.link().unwrap_or("https://veloren.net").into(),
+            title: item.title.unwrap_or_else(|| "Missing title".into()),
+            description: Self::process_description(item.description),
+            button_url: item.link.unwrap_or_else(|| "https://veloren.net".into()),
             image_url: None,
             image: None,
         };

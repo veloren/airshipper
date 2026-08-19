@@ -6,10 +6,7 @@ use crate::{
 };
 use iced::{
     Subscription,
-    advanced::{
-        Hasher,
-        subscription::{EventStream, Recipe},
-    },
+    advanced::subscription::{self, EventStream, Hasher, Recipe},
     futures::{
         self,
         stream::{BoxStream, StreamExt},
@@ -20,7 +17,7 @@ pub fn stream(
     profile: Profile,
     game_server_address: Option<String>,
 ) -> Subscription<io::ProcessUpdate> {
-    Subscription::from_recipe(Process {
+    subscription::from_recipe(Process {
         profile,
         game_server_address,
     })

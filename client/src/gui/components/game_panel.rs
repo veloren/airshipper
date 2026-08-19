@@ -1,12 +1,8 @@
 use crate::{
-    assets::{DOWNLOAD_ICON, POPPINS_BOLD_FONT, POPPINS_MEDIUM_FONT, SETTINGS_ICON},
+    assets::{POPPINS_BOLD_FONT, POPPINS_MEDIUM_FONT},
     gui::{
         custom_widgets::heading_with_rule,
-        style::{
-            button::{ButtonState, ButtonStyle, DownloadButtonStyle},
-            text::TextStyle,
-        },
-        subscriptions,
+        style, subscriptions,
         views::{
             Action,
             default::{
@@ -22,11 +18,11 @@ use crate::{
     update::{Progress, State},
 };
 use iced::{
-    Alignment, Command, Length,
+    Fill, Length, Padding, Task,
     alignment::{Horizontal, Vertical},
     widget::{
-        Image, button, column, container, image, image::Handle, progress_bar, row, text,
-        text::LineHeight, tooltip, tooltip::Position,
+        button, column, container, progress_bar, row, text, text::LineHeight, tooltip,
+        tooltip::Position,
     },
 };
 use std::{
@@ -35,7 +31,6 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-use crate::gui::style::container::ContainerStyle;
 use tracing::debug;
 
 #[derive(Debug, Clone)]
@@ -111,13 +106,13 @@ impl GamePanelComponent {
         state: State,
         empty_arc_state: Arc<Mutex<Option<State>>>,
         dstate: DownloadButtonState,
-    ) -> (Option<GamePanelState>, Option<Command<DefaultViewMessage>>) {
+    ) -> (Option<GamePanelState>, Option<Task<DefaultViewMessage>>) {
         (
             Some(GamePanelState::Updating {
                 astate: empty_arc_state.clone(),
                 btnstate: dstate.clone(),
             }),
-            Some(Command::perform(
+            Some(Task::perform(
                 async move {
                     let start_time = Instant::now();
                     let mut last_progress = None;
@@ -157,7 +152,7 @@ impl GamePanelComponent {
         &mut self,
         msg: GamePanelMessage,
         active_profile: &Profile,
-    ) -> Option<Command<DefaultViewMessage>> {
+    ) -> Option<Task<DefaultViewMessage>> {
         let (next_state, command) = match msg {
             GamePanelMessage::PlayPressed => match &self.state {
                 GamePanelState::ReadyToPlay => (
@@ -166,9 +161,9 @@ impl GamePanelComponent {
                 ),
                 GamePanelState::Retry => (
                     None,
-                    Some(Command::perform(async {}, |_| {
-                        DefaultViewMessage::GamePanel(GamePanelMessage::StartUpdate)
-                    })),
+                    Some(Task::done(DefaultViewMessage::GamePanel(
+                        GamePanelMessage::StartUpdate,
+                    ))),
                 ),
                 GamePanelState::Offline(available) => {
                     match available {
@@ -185,11 +180,9 @@ impl GamePanelComponent {
                             // retry the download
                             (
                                 None,
-                                Some(Command::perform(async {}, |_| {
-                                    DefaultViewMessage::GamePanel(
-                                        GamePanelMessage::StartUpdate,
-                                    )
-                                })),
+                                Some(Task::done(DefaultViewMessage::GamePanel(
+                                    GamePanelMessage::StartUpdate,
+                                ))),
                             )
                         },
                     }
@@ -227,7 +220,7 @@ impl GamePanelComponent {
                         let profile = profile.clone();
                         (
                             Some(GamePanelState::ReadyToPlay),
-                            Some(Command::perform(
+                            Some(Task::perform(
                                 async { Action::UpdateProfile(profile) },
                                 DefaultViewMessage::Action,
                             )),
@@ -290,9 +283,9 @@ impl GamePanelComponent {
                     debug!("Veloren exited with {}", code);
                     (
                         Some(GamePanelState::Retry),
-                        Some(Command::perform(async {}, |_| {
-                            DefaultViewMessage::GamePanel(GamePanelMessage::StartUpdate)
-                        })),
+                        Some(Task::done(DefaultViewMessage::GamePanel(
+                            GamePanelMessage::StartUpdate,
+                        ))),
                     )
                 },
                 ProcessUpdate::Error(err) => {
@@ -332,7 +325,9 @@ impl GamePanelComponent {
                         .height(Length::Fixed(30.0))
                         .push(
                             container(
-                                text(version_string).size(12).style(TextStyle::LightGrey),
+                                text(version_string)
+                                    .size(12)
+                                    .style(style::text::light_grey),
                             )
                             .align_y(Vertical::Bottom)
                             .width(Length::Fill)
@@ -341,19 +336,18 @@ impl GamePanelComponent {
                         .push(
                             tooltip(
                                 container(
-                                    button(image(Handle::from_memory(
-                                        SETTINGS_ICON.to_vec(),
-                                    )))
-                                    .style(ButtonStyle::Settings)
-                                    .on_press(
-                                        DefaultViewMessage::Interaction(SettingsPressed),
-                                    ),
+                                    button(icon::settings())
+                                        .style(style::button::settings)
+                                        .on_press(DefaultViewMessage::Interaction(
+                                            SettingsPressed,
+                                        ))
+                                        .padding(5),
                                 )
-                                .center_y(),
+                                .center_y(Fill),
                                 text("Settings").size(14),
                                 Position::Left,
                             )
-                            .style(ContainerStyle::Tooltip)
+                            .style(style::container::tooltip)
                             .gap(5),
                         ),
                 )
@@ -362,7 +356,7 @@ impl GamePanelComponent {
             .push(
                 container(self.download_area())
                     .width(Length::Fill)
-                    .padding([10, 20, 20, 20]),
+                    .padding(Padding::new(20.0).top(10)),
             )
             .into()
     }
@@ -429,14 +423,10 @@ impl GamePanelComponent {
                     format!("{} / {}", pretty_bytes(downloaded), pretty_bytes(total));
 
                 let mut download_stats_row = row![]
-                    .push(Image::new(Handle::from_memory(DOWNLOAD_ICON.to_vec())))
-                    .push(
-                        text(progress_text)
-                            .horizontal_alignment(Horizontal::Right)
-                            .size(12),
-                    )
+                    .push(icon::download())
+                    .push(text(progress_text).align_x(Horizontal::Right).size(12))
                     .spacing(5)
-                    .align_items(Alignment::Center);
+                    .align_y(Vertical::Center);
 
                 if download_rate >= f32::EPSILON {
                     let seconds = remaining.as_secs() % 60;
@@ -450,7 +440,7 @@ impl GamePanelComponent {
                     };
 
                     download_stats_row = download_stats_row
-                        .push(text("@").vertical_alignment(Vertical::Center).size(12))
+                        .push(text("@").align_y(Vertical::Center).size(12))
                         .push(
                             text(format!("{:.1} MB/s", download_rate))
                                 .font(POPPINS_BOLD_FONT)
@@ -474,7 +464,7 @@ impl GamePanelComponent {
                         .push(container(download_stats_row).padding([5, 0]))
                         .push(
                             progress_bar(0.0..=100.0f32, percent)
-                                .height(Length::Fixed(28.0)),
+                                .girth(Length::Fixed(28.0)),
                         ),
                 )
                 .into()
@@ -482,69 +472,27 @@ impl GamePanelComponent {
             _ => {
                 // For all other states, the button is shown with different text/styling
                 // dependant on the state
-                let (button_text, button_style, enabled) = match &self.state {
-                    GamePanelState::ReadyToPlay => (
-                        "Launch",
-                        ButtonStyle::Download(DownloadButtonStyle::Launch(
-                            ButtonState::Enabled,
-                        )),
-                        true,
-                    ),
-                    GamePanelState::Offline(true) => (
-                        "Play Offline",
-                        ButtonStyle::Download(DownloadButtonStyle::Launch(
-                            ButtonState::Enabled,
-                        )),
-                        true,
-                    ),
-                    GamePanelState::Offline(false) => (
-                        "Try Again",
-                        ButtonStyle::Download(DownloadButtonStyle::Update(
-                            ButtonState::Enabled,
-                        )),
-                        true,
-                    ),
+                let (button_text, enabled) = match &self.state {
+                    GamePanelState::ReadyToPlay => ("Launch", true),
+                    GamePanelState::Offline(true) => ("Play Offline", true),
+                    GamePanelState::Offline(false) => ("Try Again", true),
                     GamePanelState::Updating {
                         btnstate: dstate, ..
                     } => match *dstate {
-                        DownloadButtonState::Checking => (
-                            "Checking...",
-                            ButtonStyle::Download(DownloadButtonStyle::Update(
-                                ButtonState::Disabled,
-                            )),
-                            false,
-                        ),
-                        DownloadButtonState::WaitForConfirm => (
-                            "Download",
-                            ButtonStyle::Download(DownloadButtonStyle::Update(
-                                ButtonState::Enabled,
-                            )),
-                            true,
-                        ),
+                        DownloadButtonState::Checking => ("Checking...", false),
+                        DownloadButtonState::WaitForConfirm => ("Download", true),
                         _ => unreachable!(),
                     },
-                    GamePanelState::Retry => (
-                        "Retry",
-                        ButtonStyle::Download(DownloadButtonStyle::Update(
-                            ButtonState::Enabled,
-                        )),
-                        true,
-                    ),
-                    GamePanelState::Playing(_) => (
-                        "Playing",
-                        ButtonStyle::Download(DownloadButtonStyle::Launch(
-                            ButtonState::Disabled,
-                        )),
-                        false,
-                    ),
+                    GamePanelState::Retry => ("Retry", true),
+                    GamePanelState::Playing(_) => ("Playing", false),
                 };
 
                 let mut launch_button = button(
                     text(button_text)
                         .font(POPPINS_BOLD_FONT)
                         .size(32)
-                        .horizontal_alignment(Horizontal::Center)
-                        .vertical_alignment(Vertical::Center)
+                        .align_x(Horizontal::Center)
+                        .align_y(Vertical::Center)
                         .width(Length::Fill),
                 );
 
@@ -552,30 +500,32 @@ impl GamePanelComponent {
                     && self.selected_server_browser_address.is_some()
                 {
                     launch_button = button(
-                        column![]
-                            .align_items(Alignment::Center)
-                            .padding([10, 40])
-                            .push(
-                                text("Connect to")
-                                    .font(POPPINS_BOLD_FONT)
-                                    .line_height(LineHeight::Absolute(22.into()))
-                                    .size(18)
-                                    .horizontal_alignment(Horizontal::Center)
-                                    .vertical_alignment(Vertical::Center),
-                            )
-                            .push(
-                                text("selected server")
-                                    .font(POPPINS_BOLD_FONT)
-                                    .line_height(LineHeight::Absolute(22.into()))
-                                    .size(18)
-                                    .horizontal_alignment(Horizontal::Center)
-                                    .vertical_alignment(Vertical::Center),
-                            ),
-                    );
+                        container(
+                            text("Connect to\nselected server")
+                                .font(POPPINS_BOLD_FONT)
+                                .line_height(LineHeight::Absolute(22.into()))
+                                .size(18)
+                                .align_x(Horizontal::Center)
+                                .align_y(Vertical::Center),
+                        )
+                        .center_x(Fill)
+                        .padding([10, 30]),
+                    )
                 };
 
                 launch_button = launch_button
-                    .style(button_style)
+                    .style(|theme, status| match &self.state {
+                        GamePanelState::ReadyToPlay
+                        | GamePanelState::Playing(_)
+                        | GamePanelState::Offline(true) => {
+                            style::button::download_launch(theme, status)
+                        },
+                        GamePanelState::Offline(false)
+                        | GamePanelState::Retry
+                        | GamePanelState::Updating { .. } => {
+                            style::button::download_update(theme, status)
+                        },
+                    })
                     .width(Length::FillPortion(3))
                     .height(Length::Fixed(75.0));
 
@@ -587,26 +537,26 @@ impl GamePanelComponent {
 
                 let server_browser_button = button(
                     column![]
-                        .align_items(Alignment::Center)
+                        .align_x(Horizontal::Center)
                         .padding([10, 0])
                         .push(
                             text("Server")
                                 .font(POPPINS_MEDIUM_FONT)
                                 .size(16)
-                                .horizontal_alignment(Horizontal::Center)
-                                .vertical_alignment(Vertical::Center),
+                                .align_x(Horizontal::Center)
+                                .align_y(Vertical::Center),
                         )
                         .push(
                             text("Browser")
                                 .font(POPPINS_MEDIUM_FONT)
                                 .size(16)
-                                .horizontal_alignment(Horizontal::Center)
-                                .vertical_alignment(Vertical::Center),
+                                .align_x(Horizontal::Center)
+                                .align_y(Vertical::Center),
                         ),
                 )
                 .width(Length::FillPortion(1))
                 .height(Length::Fixed(75.0))
-                .style(ButtonStyle::ServerBrowser)
+                .style(style::button::server_browser)
                 .on_press(DefaultViewMessage::Interaction(
                     Interaction::ToggleServerBrowser,
                 ));

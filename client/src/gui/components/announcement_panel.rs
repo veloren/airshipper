@@ -1,18 +1,18 @@
 use crate::{
     Result,
-    assets::{POPPINS_MEDIUM_FONT, UP_RIGHT_ARROW_ICON},
+    assets::POPPINS_MEDIUM_FONT,
     consts::{AIRSHIPPER_RELEASE_URL, SUPPORTED_SERVER_API_VERSION},
     gui::{
-        style::{button::ButtonStyle, container::ContainerStyle, text::TextStyle},
+        style,
         views::default::{DefaultViewMessage, Interaction},
         widget::*,
     },
     net,
 };
 use iced::{
-    Alignment, Command, Length,
+    Length, Padding, Task,
     alignment::Vertical,
-    widget::{button, column, container, image, image::Handle, row, text},
+    widget::{button, column, container, row, text},
 };
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -63,7 +63,7 @@ impl AnnouncementPanelComponent {
     pub fn update(
         &mut self,
         msg: AnnouncementPanelMessage,
-    ) -> Option<Command<DefaultViewMessage>> {
+    ) -> Option<Task<DefaultViewMessage>> {
         match msg {
             AnnouncementPanelMessage::FetchAnnouncement(result) => match result {
                 Ok(announcement) => {
@@ -104,13 +104,13 @@ impl AnnouncementPanelComponent {
             container(
                 Text::new(rowtext)
                     .size(14)
-                    .style(TextStyle::Dark)
+                    .style(style::text::dark)
                     .font(POPPINS_MEDIUM_FONT),
             )
             .width(Length::Fill)
             .height(Length::Fill)
             .align_y(Vertical::Center)
-            .padding([3, 0, 0, 16]),
+            .padding(Padding::ZERO.top(3).left(16)),
         ];
         if update {
             content_row = content_row.push(
@@ -118,19 +118,19 @@ impl AnnouncementPanelComponent {
                     button(
                         row![
                             text("Download Airshipper").size(10),
-                            image(Handle::from_memory(UP_RIGHT_ARROW_ICON.to_vec(),))
+                            icon::up_right_arrow()
                         ]
                         .spacing(5)
-                        .align_items(Alignment::Center),
+                        .align_y(Vertical::Center),
                     )
                     .on_press(DefaultViewMessage::Interaction(Interaction::OpenURL(
                         AIRSHIPPER_RELEASE_URL.to_string(),
                     )))
-                    .padding([4, 10, 0, 12])
+                    .padding(Padding::ZERO.top(4).right(10).left(12))
                     .height(Length::Fixed(20.0))
-                    .style(ButtonStyle::AirshipperDownload),
+                    .style(style::button::airshipper_download),
                 )
-                .padding([0, 20, 0, 0])
+                .padding(Padding::ZERO.right(20))
                 .height(Length::Fill)
                 .align_y(Vertical::Center)
                 .width(Length::Shrink),
@@ -145,7 +145,7 @@ impl AnnouncementPanelComponent {
         let col = column![].push(
             container(top_row)
                 .width(Length::Fill)
-                .style(ContainerStyle::Announcement),
+                .style(style::container::announcement),
         );
 
         let announcement_container = container(col);

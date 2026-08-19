@@ -1,5 +1,5 @@
 pub const SUPPORTED_SERVER_API_VERSION: u32 = 1;
-pub const CACHE_VERSION: u8 = 1;
+pub const CACHE_VERSION: u8 = 2;
 
 // Filesystem
 
